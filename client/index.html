@@ -6,7 +6,9 @@
         const ws = new WebSocket('ws://localhost:4000/connect')
         ws.onopen = () => {
             console.log('ws opened on browser')
-            ws.send('hello world')
+            setInterval(function () {
+                ws.send('hello world')
+            }, 100);
         }
 
         ws.onmessage = (message) => {

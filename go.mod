@@ -3,6 +3,7 @@ module github.com/mevdschee/ws2api
 go 1.18
 
 require (
+	github.com/avast/retry-go v3.0.0+incompatible
 	github.com/gofiber/fiber/v2 v2.52.4
 	github.com/lxzan/gws v1.8.2
 )

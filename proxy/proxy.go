@@ -5,9 +5,44 @@ import (
 	"log"
 	"net/http"
 	"net/http/cookiejar"
+	"time"
 
+	"github.com/avast/retry-go"
 	"github.com/lxzan/gws"
 )
+
+// fetchDataWithRetries is your wrapped retrieval.
+// It works with a static configuration for the retries,
+// but obviously, you can generalize this function further.
+func fetchDataWithRetries(c *http.Client, url string) (r *http.Response, err error) {
+	retry.Do(
+		// The actual function that does "stuff"
+		func() error {
+			r, err = c.Get(url)
+			return err
+		},
+		// A function to decide whether you actually want to
+		// retry or not. In this case, it would make sense
+		// to actually stop retrying, since the host does not exist.
+		// Return true if you want to retry, false if not.
+		retry.RetryIf(
+			func(error) bool {
+				log.Printf("Retrieving data: %s", err)
+				log.Printf("Deciding whether to retry")
+				return true
+			}),
+		retry.OnRetry(func(try uint, orig error) {
+			log.Printf("Retrying to fetch data. Try: %d", try+2)
+		}),
+		retry.Attempts(3),
+		// Basically, we are setting up a delay
+		// which randoms between 2 and 4 seconds.
+		retry.Delay(3*time.Second),
+		retry.MaxJitter(1*time.Second),
+	)
+
+	return
+}
 
 func main() {
 	upgrader := gws.NewUpgrader(&Handler{}, &gws.ServerOption{
@@ -50,7 +85,7 @@ func (c *Handler) OnMessage(socket *gws.Conn, message *gws.Message) {
 	client := &http.Client{
 		Jar: c.jar,
 	}
-	resp, err := client.Get("http://localhost:5000")
+	resp, err := fetchDataWithRetries(client, "http://localhost:5000")
 	if err != nil {
 		_ = socket.WriteMessage(message.Opcode, []byte("connect failed"))
 	}

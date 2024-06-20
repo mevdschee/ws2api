@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -109,5 +108,5 @@ func (c *Handler) OnMessage(socket *gws.Conn, message *gws.Message) {
 	}
 	//time.Sleep(1000 * time.Millisecond)
 	_ = socket.WriteMessage(message.Opcode, b)
-	_ = socket.WriteString(fmt.Sprintf("len: %v\n", c.sessions.Len()))
+	//_ = socket.WriteString(fmt.Sprintf("len: %v\n", c.sessions.Len()))
 }

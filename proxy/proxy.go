@@ -1,10 +1,10 @@
 package main
 
 import (
-	"io/ioutil"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
-	"net/http/cookiejar"
 	"time"
 
 	"github.com/avast/retry-go"
@@ -45,7 +45,10 @@ func fetchDataWithRetries(c *http.Client, url string) (r *http.Response, err err
 }
 
 func main() {
-	upgrader := gws.NewUpgrader(&Handler{}, &gws.ServerOption{
+	handler := Handler{
+		sessions: gws.NewConcurrentMap[string, *gws.Conn](16),
+	}
+	serverOptions := gws.ServerOption{
 		CheckUtf8Enabled: true,
 		Recovery:         gws.Recovery,
 		PermessageDeflate: gws.PermessageDeflate{
@@ -53,15 +56,27 @@ func main() {
 			ServerContextTakeover: true,
 			ClientContextTakeover: true,
 		},
-	})
+	}
+	upgrader := gws.NewUpgrader(&handler, &serverOptions)
 	http.HandleFunc("/connect", func(writer http.ResponseWriter, request *http.Request) {
 		socket, err := upgrader.Upgrade(writer, request)
 		if err != nil {
 			return
 		}
 		go func() {
+			handler.sessions.Store(request.RemoteAddr, socket)
+			socket.WriteString(request.RemoteAddr)
 			socket.ReadLoop()
+			handler.sessions.Delete(request.RemoteAddr)
 		}()
+	})
+	http.HandleFunc("/send", func(writer http.ResponseWriter, request *http.Request) {
+		socket, ok := handler.sessions.Load(request.FormValue("addr"))
+		if !ok {
+			writer.Write([]byte("could not find socket"))
+			return
+		}
+		_ = socket.WriteString(request.FormValue("msg"))
 	})
 	log.Panic(
 		http.ListenAndServe(":4000", nil),
@@ -70,7 +85,7 @@ func main() {
 
 type Handler struct {
 	gws.BuiltinEventHandler
-	jar *cookiejar.Jar
+	sessions *gws.ConcurrentMap[string, *gws.Conn]
 }
 
 func (c *Handler) OnPing(socket *gws.Conn, payload []byte) {
@@ -79,19 +94,14 @@ func (c *Handler) OnPing(socket *gws.Conn, payload []byte) {
 
 func (c *Handler) OnMessage(socket *gws.Conn, message *gws.Message) {
 	defer message.Close()
-	if c.jar == nil {
-		c.jar, _ = cookiejar.New(nil)
-	}
-	client := &http.Client{
-		Jar: c.jar,
-	}
+	client := &http.Client{}
 	resp, err := fetchDataWithRetries(client, "http://localhost:5000")
 	if err != nil {
 		_ = socket.WriteMessage(message.Opcode, []byte("connect failed"))
 	}
 	b := []byte{}
 	if err == nil {
-		b, err = ioutil.ReadAll(resp.Body)
+		b, err = io.ReadAll(resp.Body)
 		if err != nil {
 			_ = socket.WriteMessage(message.Opcode, []byte("read failed"))
 		}
@@ -99,4 +109,5 @@ func (c *Handler) OnMessage(socket *gws.Conn, message *gws.Message) {
 	}
 	//time.Sleep(1000 * time.Millisecond)
 	_ = socket.WriteMessage(message.Opcode, b)
+	_ = socket.WriteString(fmt.Sprintf("len: %v\n", c.sessions.Len()))
 }

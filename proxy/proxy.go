@@ -45,18 +45,17 @@ func fetchDataWithRetries(c *http.Client, url string, body string) (r *http.Resp
 	return
 }
 
+var request_count = 0
+var request_count_channel chan int
+
 func main() {
 	handler := Handler{
 		sessions: gws.NewConcurrentMap[string, *gws.Conn](16),
 	}
 	serverOptions := gws.ServerOption{
-		CheckUtf8Enabled: true,
-		Recovery:         gws.Recovery,
-		PermessageDeflate: gws.PermessageDeflate{
-			Enabled:               true,
-			ServerContextTakeover: true,
-			ClientContextTakeover: true,
-		},
+		CheckUtf8Enabled:  true,
+		Recovery:          gws.Recovery,
+		PermessageDeflate: gws.PermessageDeflate{Enabled: false},
 	}
 	upgrader := gws.NewUpgrader(&handler, &serverOptions)
 	http.HandleFunc("/connect", func(writer http.ResponseWriter, request *http.Request) {
@@ -80,6 +79,27 @@ func main() {
 		b, _ := io.ReadAll(request.Body)
 		_ = socket.WriteString(string(b))
 	})
+	// log session and request counts (start)
+	request_count_channel = make(chan int, 10000)
+	ticker := time.NewTicker(time.Second)
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				log.Printf("sessions: %v, requests %v", handler.sessions.Len(), request_count)
+			}
+		}
+	}()
+	go func() {
+		for {
+			select {
+			case c := <-request_count_channel:
+				request_count += c
+				break
+			}
+		}
+	}()
+	// log session and request counts (end)
 	log.Panic(
 		http.ListenAndServe(":4000", nil),
 	)
@@ -97,7 +117,7 @@ func (c *Handler) OnPing(socket *gws.Conn, payload []byte) {
 func (c *Handler) OnMessage(socket *gws.Conn, message *gws.Message) {
 	defer message.Close()
 	client := &http.Client{}
-	resp, err := fetchDataWithRetries(client, "http://localhost:5000?addr="+url.QueryEscape(socket.RemoteAddr().String()), "")
+	resp, err := fetchDataWithRetries(client, "http://localhost:5000?addr="+url.QueryEscape(socket.RemoteAddr().String()), message.Data.String())
 	if err != nil {
 		_ = socket.WriteMessage(message.Opcode, []byte("connect failed"))
 	}
@@ -111,5 +131,6 @@ func (c *Handler) OnMessage(socket *gws.Conn, message *gws.Message) {
 	}
 	//time.Sleep(1000 * time.Millisecond)
 	_ = socket.WriteMessage(message.Opcode, b)
+	request_count_channel <- 1
 	//_ = socket.WriteString(fmt.Sprintf("len: %v\n", c.sessions.Len()))
 }

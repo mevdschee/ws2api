@@ -36,6 +36,7 @@ while (true) {
     try {
         ob_start();
         $_GET = $request->getQueryParams();
+        $HTTP_RAW_POST_DATA = $request->getBody()->getContents();
         include __DIR__ . '/index.php';
         $contents = ob_get_contents();
         ob_end_clean();

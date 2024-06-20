@@ -4,7 +4,7 @@ require __DIR__ . '/vendor/autoload.php';
 
 use Nyholm\Psr7\Response;
 use Nyholm\Psr7\Factory\Psr17Factory;
-
+use Spiral\RoadRunner\Environment;
 use Spiral\RoadRunner\Worker;
 use Spiral\RoadRunner\Http\PSR7Worker;
 
@@ -35,6 +35,7 @@ while (true) {
     }
     try {
         ob_start();
+        $_GET = $request->getQueryParams();
         include __DIR__ . '/index.php';
         $contents = ob_get_contents();
         ob_end_clean();

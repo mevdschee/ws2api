@@ -8,7 +8,7 @@
             console.log('ws opened on browser')
             setInterval(function () {
                 ws.send('hello world')
-            }, 1000);
+            }, 10);
         }
 
         ws.onmessage = (message) => {

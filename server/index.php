@@ -3,4 +3,5 @@
 // for ($i = 0; $i < 10000; $i++) {
 //     echo '.';
 // }
-echo "Hello from Worker!";
+
+echo "Hello: $_GET[addr]";

@@ -4,6 +4,8 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/avast/retry-go"
@@ -13,11 +15,11 @@ import (
 // fetchDataWithRetries is your wrapped retrieval.
 // It works with a static configuration for the retries,
 // but obviously, you can generalize this function further.
-func fetchDataWithRetries(c *http.Client, url string) (r *http.Response, err error) {
+func fetchDataWithRetries(c *http.Client, url string, body string) (r *http.Response, err error) {
 	retry.Do(
 		// The actual function that does "stuff"
 		func() error {
-			r, err = c.Get(url)
+			r, err = c.Post(url, "application/json", strings.NewReader(body))
 			return err
 		},
 		// A function to decide whether you actually want to
@@ -70,12 +72,13 @@ func main() {
 		}()
 	})
 	http.HandleFunc("/send", func(writer http.ResponseWriter, request *http.Request) {
-		socket, ok := handler.sessions.Load(request.FormValue("addr"))
+		socket, ok := handler.sessions.Load(request.URL.Query()["addr"][0])
 		if !ok {
 			writer.Write([]byte("could not find socket"))
 			return
 		}
-		_ = socket.WriteString(request.FormValue("msg"))
+		b, _ := io.ReadAll(request.Body)
+		_ = socket.WriteString(string(b))
 	})
 	log.Panic(
 		http.ListenAndServe(":4000", nil),
@@ -94,7 +97,7 @@ func (c *Handler) OnPing(socket *gws.Conn, payload []byte) {
 func (c *Handler) OnMessage(socket *gws.Conn, message *gws.Message) {
 	defer message.Close()
 	client := &http.Client{}
-	resp, err := fetchDataWithRetries(client, "http://localhost:5000")
+	resp, err := fetchDataWithRetries(client, "http://localhost:5000?addr="+url.QueryEscape(socket.RemoteAddr().String()), "")
 	if err != nil {
 		_ = socket.WriteMessage(message.Opcode, []byte("connect failed"))
 	}

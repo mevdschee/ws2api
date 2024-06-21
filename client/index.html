@@ -4,11 +4,14 @@
 <body>
     <script>
         const ws = new WebSocket('ws://localhost:4000/connect')
+        var i = 0;
         ws.onopen = () => {
             console.log('ws opened on browser')
             setInterval(function () {
-                ws.send('hello world')
-            }, 10);
+                var messageData = 'hello world' + i++
+                ws.send(messageData)
+                //console.log(`message sent`, messageData)
+            }, 1);
         }
 
         ws.onmessage = (message) => {

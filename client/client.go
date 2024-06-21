@@ -10,15 +10,11 @@ import (
 
 func main() {
 	socket, _, err := gws.NewClient(new(WebSocket), &gws.ClientOption{
-		Addr: "ws://127.0.0.1:4000/connect",
-		PermessageDeflate: gws.PermessageDeflate{
-			Enabled:               true,
-			ServerContextTakeover: true,
-			ClientContextTakeover: true,
-		},
+		Addr:              "ws://127.0.0.1:4000/connect",
+		PermessageDeflate: gws.PermessageDeflate{Enabled: false},
 	})
 	if err != nil {
-		log.Printf(err.Error())
+		log.Print(err.Error())
 		return
 	}
 	go socket.ReadLoop()

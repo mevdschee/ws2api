@@ -4,7 +4,7 @@
 //     echo '.';
 // }
 //
-if (explode(':', $_GET['addr'])[1] % 4 == 0) usleep(random_int(0, 100) * 1);
+if (explode(':', $_GET['addr'])[1] % 4 == 0) usleep(random_int(0, 100) * 10000);
 echo sprintf("I got '%s' from '%s'\n", $HTTP_RAW_POST_DATA, $_GET['addr']);
 
 // send reply

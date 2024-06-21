@@ -3,7 +3,8 @@
 // for ($i = 0; $i < 10000; $i++) {
 //     echo '.';
 // }
-usleep(random_int(0, 100) * 1);
+//usleep(random_int(0, 100) * 1);
+//sleep(1);
 echo sprintf("I got '%s' from '%s'\n", $HTTP_RAW_POST_DATA, $_GET['addr']);
 
 // send reply

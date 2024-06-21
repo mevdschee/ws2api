@@ -57,7 +57,7 @@ func main() {
 		Recovery:          gws.Recovery,
 		PermessageDeflate: gws.PermessageDeflate{Enabled: false},
 		ParallelEnabled:   true,
-		ParallelGolimit:   8,
+		ParallelGolimit:   16,
 	}
 	upgrader := gws.NewUpgrader(&handler, &serverOptions)
 	http.HandleFunc("/connect", func(writer http.ResponseWriter, request *http.Request) {
@@ -118,13 +118,14 @@ func (c *Handler) OnPing(socket *gws.Conn, payload []byte) {
 
 func (c *Handler) OnMessage(socket *gws.Conn, message *gws.Message) {
 	h, ok := socket.Session().Load("handling")
-	handling := h.(chan bool)
 	if !ok {
 		handling := make(chan bool, 1)
 		handling <- true
-		socket.Session().Store("handling", handling)
+		socket.Session().Store("handling", &handling)
+		h = &handling
 	}
-	<-handling
+	handling := h.(*chan bool)
+	<-*handling
 	defer message.Close()
 	client := &http.Client{}
 	resp, err := fetchDataWithRetries(client, "http://localhost:5000?addr="+url.QueryEscape(socket.RemoteAddr().String()), message.Data.String())
@@ -141,7 +142,7 @@ func (c *Handler) OnMessage(socket *gws.Conn, message *gws.Message) {
 	}
 	//time.Sleep(1000 * time.Millisecond)
 	_ = socket.WriteMessage(message.Opcode, b)
-	handling <- true
+	*handling <- true
 	request_count_channel <- 1
 	//_ = socket.WriteString(fmt.Sprintf("len: %v\n", c.sessions.Len()))
 }

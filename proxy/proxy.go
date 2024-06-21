@@ -117,6 +117,7 @@ func (c *Handler) OnPing(socket *gws.Conn, payload []byte) {
 }
 
 func (c *Handler) OnMessage(socket *gws.Conn, message *gws.Message) {
+	// ensure in-order start
 	h, ok := socket.Session().Load("handling")
 	if !ok {
 		handling := make(chan bool, 1)
@@ -126,6 +127,7 @@ func (c *Handler) OnMessage(socket *gws.Conn, message *gws.Message) {
 	}
 	handling := h.(*chan bool)
 	<-*handling
+	// ensure in-order end
 	defer message.Close()
 	client := &http.Client{}
 	resp, err := fetchDataWithRetries(client, "http://localhost:5000?addr="+url.QueryEscape(socket.RemoteAddr().String()), message.Data.String())
@@ -142,7 +144,8 @@ func (c *Handler) OnMessage(socket *gws.Conn, message *gws.Message) {
 	}
 	//time.Sleep(1000 * time.Millisecond)
 	_ = socket.WriteMessage(message.Opcode, b)
-	*handling <- true
 	request_count_channel <- 1
+	// ensure in-order
+	*handling <- true
 	//_ = socket.WriteString(fmt.Sprintf("len: %v\n", c.sessions.Len()))
 }

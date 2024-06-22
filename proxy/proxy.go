@@ -128,24 +128,28 @@ func (c *Handler) OnPing(socket *gws.Conn, payload []byte) {
 
 func (c *Handler) OnMessage(socket *gws.Conn, message *gws.Message) {
 	defer message.Close()
-	client := &http.Client{}
-	count_channel <- 1
-	v := url.Values{}
-	v.Set("addr", socket.RemoteAddr().String())
-	resp, err := fetchDataWithRetries(client, "http://localhost:5000?"+v.Encode(), message.Data.String())
-	count_channel <- -1
-	if err != nil {
-		_ = socket.WriteMessage(message.Opcode, []byte("connect failed"))
-	}
-	b := []byte{}
-	if err == nil {
-		b, err = io.ReadAll(resp.Body)
+	if message.Opcode == gws.OpcodePing {
+		socket.WritePong(message.Bytes())
+	} else {
+		client := &http.Client{}
+		count_channel <- 1
+		v := url.Values{}
+		v.Set("addr", socket.RemoteAddr().String())
+		resp, err := fetchDataWithRetries(client, "http://localhost:5000?"+v.Encode(), message.Data.String())
+		count_channel <- -1
 		if err != nil {
-			_ = socket.WriteMessage(message.Opcode, []byte("read failed"))
+			_ = socket.WriteMessage(message.Opcode, []byte("connect failed"))
 		}
-		resp.Body.Close()
+		b := []byte{}
+		if err == nil {
+			b, err = io.ReadAll(resp.Body)
+			if err != nil {
+				_ = socket.WriteMessage(message.Opcode, []byte("read failed"))
+			}
+			resp.Body.Close()
+		}
+		//time.Sleep(1000 * time.Millisecond)
+		_ = socket.WriteMessage(message.Opcode, b)
+		//_ = socket.WriteString(fmt.Sprintf("len: %v\n", c.sessions.Len()))
 	}
-	//time.Sleep(1000 * time.Millisecond)
-	_ = socket.WriteMessage(message.Opcode, b)
-	//_ = socket.WriteString(fmt.Sprintf("len: %v\n", c.sessions.Len()))
 }

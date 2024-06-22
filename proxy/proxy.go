@@ -12,6 +12,10 @@ import (
 	"github.com/lxzan/gws"
 )
 
+// func init() {
+// 	runtime.GOMAXPROCS(8)
+// }
+
 // fetchDataWithRetries is your wrapped retrieval.
 // It works with a static configuration for the retries,
 // but obviously, you can generalize this function further.

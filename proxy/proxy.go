@@ -129,7 +129,9 @@ func (c *Handler) OnMessage(socket *gws.Conn, message *gws.Message) {
 	defer message.Close()
 	client := &http.Client{}
 	count_channel <- 1
-	resp, err := fetchDataWithRetries(client, "http://localhost:5000?addr="+url.QueryEscape(socket.RemoteAddr().String()), message.Data.String())
+	v := url.Values{}
+	v.Set("addr", socket.RemoteAddr().String())
+	resp, err := fetchDataWithRetries(client, "http://localhost:5000?"+v.Encode(), message.Data.String())
 	count_channel <- -1
 	if err != nil {
 		_ = socket.WriteMessage(message.Opcode, []byte("connect failed"))

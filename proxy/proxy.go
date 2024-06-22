@@ -86,6 +86,7 @@ func main() {
 		}
 		b, _ := io.ReadAll(request.Body)
 		_ = socket.WriteString(string(b))
+		// reply with contents of next received message (use channel? how to relate?)
 	})
 	// log session and request counts (start)
 	count_channel = make(chan int, 1000000)

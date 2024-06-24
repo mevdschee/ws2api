@@ -8,9 +8,7 @@
         ws.onopen = () => {
             console.log('ws opened on browser')
             setInterval(function () {
-                var messageData = '[2,"123","hello","hello world' + (i++) + '"]'
-                ws.send(messageData)
-                //console.log('message sent: ', messageData)
+                ws.send(JSON.stringify([2, "123", "hello", "hello world" + (i++)]))
             }, 1);
         }
 

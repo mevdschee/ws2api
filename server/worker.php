@@ -33,8 +33,8 @@ while (true) {
     }
     try {
         ob_start();
-        $_GET = $request->getQueryParams();
         $_SERVER = $request->getServerParams();
+        $_SERVER['PATH_INFO'] = $request->getUri()->getPath();
         $HTTP_RAW_POST_DATA = $request->getBody()->getContents();
         include __DIR__ . '/index.php';
         $contents = ob_get_contents();

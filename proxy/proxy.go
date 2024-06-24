@@ -4,7 +4,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
@@ -15,6 +14,12 @@ import (
 // func init() {
 // 	runtime.GOMAXPROCS(8)
 // }
+
+const (
+	CALL       string = "2" // Client-to-Server
+	CALLRESULT string = "3" // Server-to-Client
+	CALLERROR  string = "4" // Server-to-Client
+)
 
 // fetchDataWithRetries is your wrapped retrieval.
 // It works with a static configuration for the retries,
@@ -45,7 +50,6 @@ func fetchDataWithRetries(c *http.Client, url string, body string) (r *http.Resp
 		retry.Delay(3*time.Second),
 		retry.MaxJitter(1*time.Second),
 	)
-
 	return
 }
 
@@ -55,7 +59,9 @@ var count_channel chan int
 
 func main() {
 	handler := Handler{
-		sessions: gws.NewConcurrentMap[string, *gws.Conn](16),
+		sessions:  gws.NewConcurrentMap[string, *gws.Conn](16),
+		addresses: gws.NewConcurrentMap[*gws.Conn, string](16),
+		//channels:  gws.NewConcurrentMap[*gws.Conn, *chan []string](16),
 	}
 	serverOptions := gws.ServerOption{
 		CheckUtf8Enabled:  true,
@@ -66,28 +72,6 @@ func main() {
 		//		ParallelGolimit:   16,
 	}
 	upgrader := gws.NewUpgrader(&handler, &serverOptions)
-	http.HandleFunc("/connect", func(writer http.ResponseWriter, request *http.Request) {
-		socket, err := upgrader.Upgrade(writer, request)
-		if err != nil {
-			return
-		}
-		go func() {
-			handler.sessions.Store(request.RemoteAddr, socket)
-			socket.WriteString(request.RemoteAddr)
-			socket.ReadLoop()
-			handler.sessions.Delete(request.RemoteAddr)
-		}()
-	})
-	http.HandleFunc("/send", func(writer http.ResponseWriter, request *http.Request) {
-		socket, ok := handler.sessions.Load(request.URL.Query()["addr"][0])
-		if !ok {
-			writer.Write([]byte("could not find socket"))
-			return
-		}
-		b, _ := io.ReadAll(request.Body)
-		_ = socket.WriteString(string(b))
-		// reply with contents of next received message (use channel? how to relate?)
-	})
 	// log session and request counts (start)
 	count_channel = make(chan int, 1000000)
 	ticker := time.NewTicker(time.Second)
@@ -95,7 +79,7 @@ func main() {
 		for {
 			select {
 			case <-ticker.C:
-				log.Printf("sessions: %v, requests %v, curls %v", handler.sessions.Len(), request_count, curl_count)
+				log.Printf("addresses: %v, requests %v, curls %v", handler.addresses.Len(), request_count, curl_count)
 			}
 		}
 	}()
@@ -113,13 +97,83 @@ func main() {
 	}()
 	// log session and request counts (end)
 	log.Panic(
-		http.ListenAndServe(":4000", nil),
+		http.ListenAndServe(":4000", http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			parts := strings.Split(request.URL.Path, "/")
+			switch request.Method {
+			case http.MethodPost:
+				// parse address
+				if len(parts) != 4 {
+					writer.WriteHeader(400)
+					writer.Write([]byte("invalid url, use /message/address/guid"))
+					return
+				}
+				msgAction := parts[1]
+				address := parts[2]
+				msgId := parts[3]
+				// find socket
+				socket, ok := handler.sessions.Load(address)
+				if !ok {
+					writer.WriteHeader(404)
+					writer.Write([]byte("could not find address"))
+					return
+				}
+				defer request.Body.Close()
+				bodyBytes, err := io.ReadAll(request.Body)
+				if err != nil {
+					writer.WriteHeader(500)
+					writer.Write([]byte("could not read body"))
+					return
+				}
+				socket.WriteString("[" + CALL + ",\"" + msgId + "\",\"" + msgAction + "\"," + string(bodyBytes) + "]")
+				// find channel
+				// channel, ok := handler.channels.Load(socket)
+				// if !ok {
+				// 	writer.WriteHeader(404)
+				// 	writer.Write([]byte("could not find channel"))
+				// 	return
+				// }
+				// fields := <-*channel
+				// switch fields[0] {
+				// case CALLRESULT:
+				// 	fallthrough
+				// case CALLERROR:
+				// 	writer.Write([]byte(fmt.Sprintf("%v", fields)))
+				// }
+				// reply with contents of next received message (use channel? how to relate?)
+			default:
+				// parse address
+				if len(parts) != 2 {
+					writer.WriteHeader(404)
+					writer.Write([]byte("invalid url, use /address"))
+					return
+				}
+				address := parts[1]
+				socket, err := upgrader.Upgrade(writer, request)
+				if err != nil {
+					writer.WriteHeader(500)
+					writer.Write([]byte("could not upgrade socket"))
+					return
+				}
+				go func() {
+					//channel := make(chan []string)
+					handler.sessions.Store(address, socket)
+					handler.addresses.Store(socket, address)
+					//handler.channels.Store(socket, &channel)
+					//socket.WriteString(address + "=>" + socket.RemoteAddr().String())
+					socket.ReadLoop()
+					handler.addresses.Delete(socket)
+					//handler.channels.Delete(socket)
+				}()
+			}
+		})),
 	)
 }
 
 type Handler struct {
 	gws.BuiltinEventHandler
-	sessions *gws.ConcurrentMap[string, *gws.Conn]
+	sessions  *gws.ConcurrentMap[string, *gws.Conn]
+	addresses *gws.ConcurrentMap[*gws.Conn, string]
+	//channels  *gws.ConcurrentMap[*gws.Conn, *chan []string]
 }
 
 func (c *Handler) OnPing(socket *gws.Conn, payload []byte) {
@@ -130,26 +184,51 @@ func (c *Handler) OnMessage(socket *gws.Conn, message *gws.Message) {
 	defer message.Close()
 	if message.Opcode == gws.OpcodePing {
 		socket.WritePong(message.Bytes())
-	} else {
+		return
+	}
+	msg := message.Data.String()
+	msgType := msg[1:2]
+	switch msgType {
+	case CALL:
+		fields := strings.SplitN(msg[1:len(msg)-1], ",", 4)
+		msgId := strings.Trim(fields[1], "\"")
+		msgAction := strings.Trim(fields[2], "\"")
+		msgBody := fields[3]
+		address, ok := c.addresses.Load(socket)
+		if !ok {
+			socket.WriteString("[" + CALLERROR + ",\"" + msgId + "\",\"InternalError\",\"OnMessage: could not find address\",{}]")
+			return
+		}
 		client := &http.Client{}
 		count_channel <- 1
-		v := url.Values{}
-		v.Set("addr", socket.RemoteAddr().String())
-		resp, err := fetchDataWithRetries(client, "http://localhost:5000?"+v.Encode(), message.Data.String())
+		resp, err := fetchDataWithRetries(client, "http://localhost:5000/"+msgAction+"/"+address+"/"+msgId, msgBody)
 		count_channel <- -1
 		if err != nil {
-			_ = socket.WriteMessage(message.Opcode, []byte("connect failed"))
+			socket.WriteString("[" + CALLERROR + ",\"" + msgId + "\",\"InternalError\",\"OnMessage: connect failed\",{}]")
+			return
 		}
-		b := []byte{}
-		if err == nil {
-			b, err = io.ReadAll(resp.Body)
-			if err != nil {
-				_ = socket.WriteMessage(message.Opcode, []byte("read failed"))
-			}
-			resp.Body.Close()
+		defer resp.Body.Close()
+		responseBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			socket.WriteString("[" + CALLERROR + ",\"" + msgId + "\",\"InternalError\",\"OnMessage: read failed\",{}]")
+			return
 		}
 		//time.Sleep(1000 * time.Millisecond)
-		_ = socket.WriteMessage(message.Opcode, b)
+		socket.WriteString("[" + CALLRESULT + ",\"" + msgId + "\"," + string(responseBytes) + "]")
 		//_ = socket.WriteString(fmt.Sprintf("len: %v\n", c.sessions.Len()))
+	case CALLRESULT:
+		// fields := strings.SplitN(msg[1:len(msg)-1], ",", 3)
+		// msgId := strings.Trim(fields[1], "\"")
+		// msgBody := fields[2]
+		// channel, _ := c.channels.Load(socket)
+		//*channel <- []string{CALLRESULT, msgId, msgBody}
+	case CALLERROR:
+		//fields := strings.SplitN(msg[1:len(msg)-1], ",", 5)
+		// msgId := strings.Trim(fields[1], "\"")
+		// errCode := fields[2]
+		// errDescription := fields[3]
+		// errDetails := fields[4]
+		// channel, _ := c.channels.Load(socket)
+		//*channel <- []string{CALLERROR, msgId, errCode, errDescription, errDetails}
 	}
 }

@@ -7,15 +7,19 @@
         var i = 0;
         ws.onopen = () => {
             console.log('ws opened on browser')
-            setInterval(function () {
-                var messageData = 'hello world' + i++
-                ws.send(messageData)
-                //console.log(`message sent`, messageData)
-            }, 1);
+            // setInterval(function () {
+            //     var messageData = '[2,"123","hello","hello world' + (i++) + '"]'
+            //     ws.send(messageData)
+            //     //console.log('message sent: ', messageData)
+            // }, 1);
         }
 
         ws.onmessage = (message) => {
-            console.log(`message received`, message.data)
+            console.log(message.data)
+            var msg = JSON.parse(message.data)
+            if (msg[0] == 2) {
+                ws.send(JSON.stringify([3, "123", msg[3]]))
+            }
         }
 
     </script>

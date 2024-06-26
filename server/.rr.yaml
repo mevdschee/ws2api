@@ -9,7 +9,7 @@ server:
 http:
   address: "0.0.0.0:5000"
   pool:
-    num_workers: 10
+    num_workers: 20
     supervisor:
       # watch_tick defines how often to check the state of the workers (seconds)
       watch_tick: 1s

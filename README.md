@@ -47,6 +47,17 @@ And the JSON Payload of the result is in the body of the HTTP response.
     
     {<Payload>}
 
+### Rest to Websocket
+
+The CALL is can be made with a HTTP request with the following content:
+
+    POST /call/<Action>/<ClientId>/<MessageId>
+    Content-Type: application/json
+    
+    {<Payload>}
+
+And the JSON Payload is sent in a separate HTTP response.
+
 The CALLRESULT is converted to a HTTP request with the following content:
 
     POST /result/<Action>/<ClientId>/<MessageId>
@@ -63,6 +74,5 @@ The CALLERROR is converted to a HTTP request with the following content:
 
 
 
-### Rest to Websocket
 
 WIP

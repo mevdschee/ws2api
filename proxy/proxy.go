@@ -99,9 +99,9 @@ func main() {
 			switch request.Method {
 			case http.MethodPost:
 				// parse address
-				if len(parts) != 4 {
+				if len(parts) != 5 {
 					writer.WriteHeader(400)
-					writer.Write([]byte("invalid url, use /message/address/guid"))
+					writer.Write([]byte("invalid url, use /type/message/address/guid"))
 					return
 				}
 				msgAction := parts[2]

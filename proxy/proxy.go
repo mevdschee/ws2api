@@ -221,7 +221,10 @@ func (c *Handler) handleIncomingMessages(socket *gws.Conn, incomingMessages *cha
 			if !ok {
 				log.Println("could not find message action")
 			}
-			msgAction := (*outgoingActions)[msgId]
+			msgAction, ok := (*outgoingActions)[msgId]
+			if ok {
+				delete((*outgoingActions), msgId)
+			}
 			count_channel <- 1
 			_, err := fetchDataWithRetries(client, "http://localhost:5000/result/"+msgAction+"/"+address+"/"+msgId, msgBody)
 			count_channel <- -1
@@ -236,7 +239,10 @@ func (c *Handler) handleIncomingMessages(socket *gws.Conn, incomingMessages *cha
 			if !ok {
 				log.Println("could not find message action")
 			}
-			msgAction := (*outgoingActions)[msgId]
+			msgAction, ok := (*outgoingActions)[msgId]
+			if ok {
+				delete((*outgoingActions), msgId)
+			}
 			count_channel <- 1
 			_, err := fetchDataWithRetries(client, "http://localhost:5000/error/"+msgAction+"/"+address+"/"+msgId, msgBody)
 			count_channel <- -1

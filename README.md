@@ -34,9 +34,9 @@ In case of an error it is:
 
     [<MessageTypeId>, "<MessageId>", "<errorCode>", "<errorDescription>", {<errorDetails>}]
 
-It is converted to a REST call with the following content:
+The CALL is converted to a HTTP request with the following content:
 
-    POST /<Action>/<ClientId>/<MessageId>
+    POST /call/<Action>/<ClientId>/<MessageId>
     Content-Type: application/json
     
     {<Payload>}
@@ -46,6 +46,22 @@ And the JSON Payload of the result is in the body of the HTTP response.
     Content-Type: application/json
     
     {<Payload>}
+
+The CALLRESULT is converted to a HTTP request with the following content:
+
+    POST /result/<Action>/<ClientId>/<MessageId>
+    Content-Type: application/json
+    
+    {<Payload>}
+
+The CALLERROR is converted to a HTTP request with the following content:
+
+    POST /error/<Action>/<ClientId>/<MessageId>
+    Content-Type: application/json
+    
+    {"code": "<errorCode>", "description": "<errorDescription>", "details": {<errorDetails>}}
+
+
 
 ### Rest to Websocket
 

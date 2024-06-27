@@ -11,7 +11,7 @@ import (
 )
 
 func main() {
-	n := 20000
+	n := 120000
 	var wg sync.WaitGroup
 	wg.Add(n)
 	for i := 1; i <= n; i++ {

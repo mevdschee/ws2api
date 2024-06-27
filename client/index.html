@@ -5,15 +5,15 @@
     <script>
         const ws = new WebSocket('ws://localhost:4000/connect')
         var i = 0;
-        ws.onopen = () => {
-            console.log('ws opened on browser')
-            setInterval(function () {
+        function send() {
                 var msgData = JSON.stringify([2, "123", "hello", "hello world" + (i++)])
                 //console.log(msgData)
                 ws.send(msgData)
-            }, 1);
         }
-
+        ws.onopen = () => {
+            console.log('ws opened on browser')
+            send()
+        }
         ws.onmessage = (message) => {
             console.log(message.data)
             var msg = JSON.parse(message.data)
@@ -21,6 +21,8 @@
                 var msgData = JSON.stringify([3, "123", msg[3]])
                 //console.log(msgData)
                 ws.send(msgData)
+            } else {
+                send()
             }
         }
 

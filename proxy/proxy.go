@@ -1,10 +1,10 @@
 package main
 
 import (
-	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"runtime"
 	"strings"
 	"time"
 
@@ -12,9 +12,9 @@ import (
 	"github.com/lxzan/gws"
 )
 
-// func init() {
-// 	runtime.GOMAXPROCS(8)
-// }
+func init() {
+	runtime.GOMAXPROCS(8)
+}
 
 const (
 	CALL       string = "2" // Client-to-Server
@@ -60,19 +60,19 @@ var count_channel chan int
 
 func main() {
 	handler := Handler{
-		sessions:        gws.NewConcurrentMap[string, *gws.Conn](16),
-		addresses:       gws.NewConcurrentMap[*gws.Conn, string](16),
-		clientRequests:  gws.NewConcurrentMap[*gws.Conn, *chan string](16),
-		serverRequests:  gws.NewConcurrentMap[*gws.Conn, *chan string](16),
-		serverResponses: gws.NewConcurrentMap[*gws.Conn, *chan string](16),
+		sessions:         gws.NewConcurrentMap[string, *gws.Conn](16),
+		addresses:        gws.NewConcurrentMap[*gws.Conn, string](16),
+		outgoingActions:  gws.NewConcurrentMap[*gws.Conn, *map[string]string](16),
+		incomingMessages: gws.NewConcurrentMap[*gws.Conn, *chan string](16),
+		outgoingMessages: gws.NewConcurrentMap[*gws.Conn, *chan string](16),
 	}
 	serverOptions := gws.ServerOption{
 		CheckUtf8Enabled:  true,
 		Recovery:          gws.Recovery,
 		PermessageDeflate: gws.PermessageDeflate{Enabled: false},
 		// keep disabled to ensure packet order
-		// ParallelEnabled: true,
-		// ParallelGolimit: 16,
+		ParallelEnabled: true,
+		ParallelGolimit: 16,
 	}
 	upgrader := gws.NewUpgrader(&handler, &serverOptions)
 	// log session and request counts (start)
@@ -104,9 +104,9 @@ func main() {
 					writer.Write([]byte("invalid url, use /message/address/guid"))
 					return
 				}
-				msgAction := parts[1]
-				address := parts[2]
-				msgId := parts[3]
+				msgAction := parts[2]
+				address := parts[3]
+				msgId := parts[4]
 				// find socket
 				socket, ok := handler.sessions.Load(address)
 				if !ok {
@@ -121,28 +121,20 @@ func main() {
 					writer.Write([]byte("could not read body"))
 					return
 				}
-				serverRequests, _ := handler.serverRequests.Load(socket)
-				*serverRequests <- "[" + CALL + ",\"" + msgId + "\",\"" + msgAction + "\"," + string(bodyBytes) + "]"
-				serverResponses, _ := handler.serverResponses.Load(socket)
-				msg := <-*serverResponses
-				msgType := msg[1:2]
-				switch msgType {
-				case CALLRESULT:
-					fields := strings.SplitN(msg[1:len(msg)-1], ",", 3)
-					// should match msgId
-					//msgId := strings.Trim(fields[1], "\"")
-					msgBody := fields[2]
-					writer.Write([]byte(msgBody))
-				case CALLERROR:
-					fields := strings.SplitN(msg[1:len(msg)-1], ",", 5)
-					// should match msgId
-					//msgId := strings.Trim(fields[1], "\"")
-					errCode := fields[2]
-					errDescription := fields[3]
-					errDetails := fields[4]
+				outgoingMessages, ok := handler.outgoingMessages.Load(socket)
+				if !ok {
 					writer.WriteHeader(500)
-					writer.Write([]byte(fmt.Sprintf("%v,%v,%v", errCode, errDescription, errDetails)))
+					writer.Write([]byte("could not find outgoing channel"))
+					return
 				}
+				outgoingActions, ok := handler.outgoingActions.Load(socket)
+				if !ok {
+					writer.WriteHeader(500)
+					writer.Write([]byte("could not find actions map"))
+					return
+				}
+				(*outgoingActions)[msgId] = msgAction
+				*outgoingMessages <- "[" + CALL + ",\"" + msgId + "\",\"" + msgAction + "\"," + string(bodyBytes) + "]"
 			default:
 				// parse address
 				if len(parts) != 2 {
@@ -165,33 +157,38 @@ func main() {
 
 type Handler struct {
 	gws.BuiltinEventHandler
-	sessions        *gws.ConcurrentMap[string, *gws.Conn]
-	addresses       *gws.ConcurrentMap[*gws.Conn, string]
-	clientRequests  *gws.ConcurrentMap[*gws.Conn, *chan string]
-	serverRequests  *gws.ConcurrentMap[*gws.Conn, *chan string]
-	serverResponses *gws.ConcurrentMap[*gws.Conn, *chan string]
+	sessions         *gws.ConcurrentMap[string, *gws.Conn]
+	outgoingActions  *gws.ConcurrentMap[*gws.Conn, *map[string]string]
+	addresses        *gws.ConcurrentMap[*gws.Conn, string]
+	incomingMessages *gws.ConcurrentMap[*gws.Conn, *chan string]
+	outgoingMessages *gws.ConcurrentMap[*gws.Conn, *chan string]
 }
 
 func (c *Handler) handleConnection(socket *gws.Conn, address string) {
 	c.sessions.Store(address, socket)
+	outgoingActions := make(map[string]string)
+	c.outgoingActions.Store(socket, &outgoingActions)
 	c.addresses.Store(socket, address)
-	clientRequests := make(chan string, 100000)
-	serverRequests := make(chan string, 100000)
-	serverResponses := make(chan string, 100000)
-	c.clientRequests.Store(socket, &clientRequests)
-	c.serverRequests.Store(socket, &serverRequests)
-	c.serverResponses.Store(socket, &serverResponses)
-	go c.handleClientRequests(socket, &clientRequests)
-	go c.handleServerRequests(socket, &serverRequests)
+	incomingMessages := make(chan string, 100000)
+	outgoingMessages := make(chan string, 100000)
+	c.incomingMessages.Store(socket, &incomingMessages)
+	c.outgoingMessages.Store(socket, &outgoingMessages)
+	go c.handleIncomingMessages(socket, &incomingMessages)
+	go c.handleOutgoingMessages(socket, &outgoingMessages)
 	socket.ReadLoop()
 	c.addresses.Delete(socket)
-	c.clientRequests.Delete(socket)
-	c.serverRequests.Delete(socket)
-	c.serverResponses.Delete(socket)
+	c.addresses.Delete(socket)
+	c.incomingMessages.Delete(socket)
+	c.outgoingMessages.Delete(socket)
 }
 
-func (c *Handler) handleClientRequests(socket *gws.Conn, clientRequests *chan string) {
-	for msg := range *clientRequests {
+func (c *Handler) handleIncomingMessages(socket *gws.Conn, incomingMessages *chan string) {
+	address, ok := c.addresses.Load(socket)
+	if !ok {
+		log.Fatalln("could not find address")
+	}
+	client := &http.Client{}
+	for msg := range *incomingMessages {
 		msgType := msg[1:2]
 		switch msgType {
 		case CALL:
@@ -199,14 +196,8 @@ func (c *Handler) handleClientRequests(socket *gws.Conn, clientRequests *chan st
 			msgId := strings.Trim(fields[1], "\"")
 			msgAction := strings.Trim(fields[2], "\"")
 			msgBody := fields[3]
-			address, ok := c.addresses.Load(socket)
-			if !ok {
-				socket.WriteString("[" + CALLERROR + ",\"" + msgId + "\",\"InternalError\",\"OnMessage: could not find address\",{}]")
-				return
-			}
-			client := &http.Client{}
 			count_channel <- 1
-			resp, err := fetchDataWithRetries(client, "http://localhost:5000/"+msgAction+"/"+address+"/"+msgId, msgBody)
+			resp, err := fetchDataWithRetries(client, "http://localhost:5000/call/"+msgAction+"/"+address+"/"+msgId, msgBody)
 			count_channel <- -1
 			if err != nil {
 				socket.WriteString("[" + CALLERROR + ",\"" + msgId + "\",\"InternalError\",\"OnMessage: connect failed\",{}]")
@@ -218,41 +209,73 @@ func (c *Handler) handleClientRequests(socket *gws.Conn, clientRequests *chan st
 				socket.WriteString("[" + CALLERROR + ",\"" + msgId + "\",\"InternalError\",\"OnMessage: read failed\",{}]")
 				return
 			}
-			socket.WriteString("[" + CALLRESULT + ",\"" + msgId + "\"," + string(responseBytes) + "]")
+			err = socket.WriteString("[" + CALLRESULT + ",\"" + msgId + "\"," + string(responseBytes) + "]")
+			if err != nil {
+				log.Println(err.Error())
+			}
+		case CALLRESULT:
+			fields := strings.SplitN(msg[1:len(msg)-1], ",", 3)
+			msgId := strings.Trim(fields[1], "\"")
+			msgBody := fields[2]
+			outgoingActions, ok := c.outgoingActions.Load(socket)
+			if !ok {
+				log.Println("could not find message action")
+			}
+			msgAction := (*outgoingActions)[msgId]
+			count_channel <- 1
+			_, err := fetchDataWithRetries(client, "http://localhost:5000/result/"+msgAction+"/"+address+"/"+msgId, msgBody)
+			count_channel <- -1
+			if err != nil {
+				log.Println(err.Error())
+			}
+		case CALLERROR:
+			fields := strings.SplitN(msg[1:len(msg)-1], ",", 5)
+			msgId := strings.Trim(fields[1], "\"")
+			msgBody := "{\"code\":" + fields[2] + ",\"description\":" + fields[3] + ",\"details\":" + fields[4] + "}"
+			outgoingActions, ok := c.outgoingActions.Load(socket)
+			if !ok {
+				log.Println("could not find message action")
+			}
+			msgAction := (*outgoingActions)[msgId]
+			count_channel <- 1
+			_, err := fetchDataWithRetries(client, "http://localhost:5000/error/"+msgAction+"/"+address+"/"+msgId, msgBody)
+			count_channel <- -1
+			if err != nil {
+				log.Println(err.Error())
+			}
 		}
 	}
 }
 
-func (c *Handler) handleServerRequests(socket *gws.Conn, serverRequests *chan string) {
-	for msg := range *serverRequests {
-		socket.WriteString(msg)
+func (c *Handler) handleOutgoingMessages(socket *gws.Conn, outgoingMessages *chan string) {
+	for msg := range *outgoingMessages {
+		err := socket.WriteString(msg)
+		if err != nil {
+			log.Println(err.Error())
+		}
 	}
 }
 
 func (c *Handler) OnPing(socket *gws.Conn, payload []byte) {
-	_ = socket.WritePong(payload)
+	err := socket.WritePong(payload)
+	if err != nil {
+		log.Println(err.Error())
+	}
 }
 
 func (c *Handler) OnMessage(socket *gws.Conn, message *gws.Message) {
+	defer message.Close()
 	if message.Opcode == gws.OpcodePing {
-		socket.WritePong(message.Bytes())
+		err := socket.WritePong(message.Bytes())
+		if err != nil {
+			log.Println(err.Error())
+		}
 		return
 	}
 	msg := message.Data.String()
-	message.Close()
-	msgType := msg[1:2]
-	switch msgType {
-	case CALL:
-		clientRequests, ok := c.clientRequests.Load(socket)
-		if ok {
-			*clientRequests <- msg
-		}
-	case CALLRESULT:
-		fallthrough
-	case CALLERROR:
-		serverResponses, ok := c.serverResponses.Load(socket)
-		if ok {
-			*serverResponses <- msg
-		}
+	incomingMessages, ok := c.incomingMessages.Load(socket)
+	if !ok {
+		log.Println("could not find incoming channel")
 	}
+	*incomingMessages <- msg
 }

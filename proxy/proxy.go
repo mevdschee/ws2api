@@ -36,8 +36,8 @@ func fetchDataWithRetries(c *http.Client, url string, body string) (responseByte
 		func() error {
 			r, err := c.Post(url, "application/json", strings.NewReader(body))
 			if err == nil {
+				defer r.Body.Close()
 				responseBytes, err = io.ReadAll(r.Body)
-				r.Body.Close()
 			}
 			return err
 		},

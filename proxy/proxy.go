@@ -156,10 +156,6 @@ func (s *Statistics) decrement(name string) {
 	s.counters[name]--
 }
 
-func (s *Statistics) getCounters() *map[string]uint64 {
-	return &s.counters
-}
-
 type Handler struct {
 	gws.BuiltinEventHandler
 	statistics       Statistics

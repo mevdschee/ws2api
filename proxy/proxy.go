@@ -1,10 +1,13 @@
 package main
 
 import (
+	"flag"
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"runtime"
+	"runtime/pprof"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,11 +30,15 @@ const (
 // fetchDataWithRetries is your wrapped retrieval.
 // It works with a static configuration for the retries,
 // but obviously, you can generalize this function further.
-func fetchDataWithRetries(c *http.Client, url string, body string) (r *http.Response, err error) {
+func fetchDataWithRetries(c *http.Client, url string, body string) (responseBytes []byte, err error) {
 	retry.Do(
 		// The actual function that does "stuff"
 		func() error {
-			r, err = c.Post(url, "application/json", strings.NewReader(body))
+			r, err := c.Post(url, "application/json", strings.NewReader(body))
+			if err == nil {
+				responseBytes, err = io.ReadAll(r.Body)
+				r.Body.Close()
+			}
 			return err
 		},
 		// A function to decide whether you actually want to
@@ -56,7 +63,19 @@ func fetchDataWithRetries(c *http.Client, url string, body string) (r *http.Resp
 	return
 }
 
+var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
+var memprofile = flag.String("memprofile", "", "write mem profile to file")
+
 func main() {
+	flag.Parse()
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
+	}
 	handler := Handler{
 		sessions:         gws.NewConcurrentMap[string, *gws.Conn](16),
 		statistics:       Statistics{counters: map[string]uint64{}},
@@ -123,6 +142,14 @@ func main() {
 					for k, v := range handler.statistics.counters {
 						writer.Write([]byte(k + " " + strconv.FormatUint(v, 10) + "\n"))
 					}
+					if *memprofile != "" {
+						f, err := os.Create(*memprofile)
+						if err != nil {
+							log.Fatal(err)
+						}
+						pprof.WriteHeapProfile(f)
+						f.Close()
+					}
 					return
 				}
 				address := parts[1]
@@ -171,8 +198,8 @@ func (c *Handler) handleConnection(socket *gws.Conn, address string) {
 	outgoingActions := make(map[string]string)
 	c.outgoingActions.Store(socket, &outgoingActions)
 	c.addresses.Store(socket, address)
-	incomingMessages := make(chan string, 100000)
-	outgoingMessages := make(chan string, 100000)
+	incomingMessages := make(chan string, 1000)
+	outgoingMessages := make(chan string, 1000)
 	c.incomingMessages.Store(socket, &incomingMessages)
 	c.outgoingMessages.Store(socket, &outgoingMessages)
 	go c.handleIncomingMessages(socket, &incomingMessages)
@@ -200,14 +227,12 @@ func (c *Handler) handleIncomingMessages(socket *gws.Conn, incomingMessages *cha
 			msgBody := fields[3]
 			c.statistics.increment("request_count")
 			c.statistics.increment("curl_count")
-			resp, err := fetchDataWithRetries(client, "http://localhost:5000/call/"+msgAction+"/"+address+"/"+msgId, msgBody)
+			responseBytes, err := fetchDataWithRetries(client, "http://localhost:5000/call/"+msgAction+"/"+address+"/"+msgId, msgBody)
 			c.statistics.decrement("curl_count")
 			if err != nil {
 				socket.WriteString("[" + CALLERROR + ",\"" + msgId + "\",\"InternalError\",\"OnMessage: connect failed\",{}]")
 				return
 			}
-			responseBytes, err := io.ReadAll(resp.Body)
-			resp.Body.Close()
 			if err != nil {
 				socket.WriteString("[" + CALLERROR + ",\"" + msgId + "\",\"InternalError\",\"OnMessage: read failed\",{}]")
 				return

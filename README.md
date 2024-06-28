@@ -74,14 +74,14 @@ The CALLERROR is converted to a HTTP request with the following content:
 
 ### Profiling
 
-This application suppports the standard "-cpuprofile=" and "-memprofile=" flags to create pprof profiles.
+The proxy application suppports the standard "-cpuprofile=" and "-memprofile=" flags to create pprof profiles.
 
 ### Performance results
 
-This application was benchmarked to build up and hold 120k connections each doing one message per 10 seconds
+The proxy application was benchmarked to build up and hold 120k connections each doing one message per 10 seconds
 in 30 seconds (from 0 to 120k connections) and with 12k messages per second within 32GB RAM.
 
 ### Warning
 
-This application is currently unbound and will use as much RAM as it needs easily using up to 64GB of RAM.
+The proxy application is currently unbound and will use as much RAM as it needs easily using up to 64GB of RAM.
 Also the setup requires many open files, so you may want to set the using "ulimit -n 200000".

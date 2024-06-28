@@ -5,7 +5,9 @@ import (
 	"log"
 	"net/http"
 	"runtime"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/avast/retry-go"
@@ -54,13 +56,10 @@ func fetchDataWithRetries(c *http.Client, url string, body string) (r *http.Resp
 	return
 }
 
-var request_count = 0
-var curl_count = 0
-var count_channel chan int
-
 func main() {
 	handler := Handler{
 		sessions:         gws.NewConcurrentMap[string, *gws.Conn](16),
+		statistics:       Statistics{counters: map[string]uint64{}},
 		addresses:        gws.NewConcurrentMap[*gws.Conn, string](16),
 		outgoingActions:  gws.NewConcurrentMap[*gws.Conn, *map[string]string](16),
 		incomingMessages: gws.NewConcurrentMap[*gws.Conn, *chan string](16),
@@ -75,24 +74,7 @@ func main() {
 		ParallelGolimit: 16,
 	}
 	upgrader := gws.NewUpgrader(&handler, &serverOptions)
-	// log session and request counts (start)
-	count_channel = make(chan int, 1000000)
-	ticker := time.NewTicker(time.Second)
-	go func() {
-		for range ticker.C {
-			log.Printf("addresses: %v, requests %v, curls %v", handler.addresses.Len(), request_count, curl_count)
-		}
-	}()
-	go func() {
-		time.Sleep(time.Second)
-		for c := range count_channel {
-			if c > 0 {
-				request_count += c
-			}
-			curl_count += c
-		}
-	}()
-	// log session and request counts (end)
+	log.Println("stats on: http://localhost:4000/")
 	log.Panic(
 		http.ListenAndServe(":4000", http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 			parts := strings.Split(request.URL.Path, "/")
@@ -137,9 +119,10 @@ func main() {
 				*outgoingMessages <- "[" + CALL + ",\"" + msgId + "\",\"" + msgAction + "\"," + string(bodyBytes) + "]"
 			default:
 				// parse address
-				if len(parts) != 2 {
-					writer.WriteHeader(404)
-					writer.Write([]byte("invalid url, use /address"))
+				if len(parts[1]) == 0 {
+					for k, v := range handler.statistics.counters {
+						writer.Write([]byte(k + " " + strconv.FormatUint(v, 10) + "\n"))
+					}
 					return
 				}
 				address := parts[1]
@@ -149,14 +132,37 @@ func main() {
 					writer.Write([]byte("could not upgrade socket"))
 					return
 				}
+				handler.statistics.increment("addresses")
 				go handler.handleConnection(socket, address)
 			}
 		})),
 	)
 }
 
+type Statistics struct {
+	mutex    sync.Mutex
+	counters map[string]uint64
+}
+
+func (s *Statistics) increment(name string) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.counters[name]++
+}
+
+func (s *Statistics) decrement(name string) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.counters[name]--
+}
+
+func (s *Statistics) getCounters() *map[string]uint64 {
+	return &s.counters
+}
+
 type Handler struct {
 	gws.BuiltinEventHandler
+	statistics       Statistics
 	sessions         *gws.ConcurrentMap[string, *gws.Conn]
 	outgoingActions  *gws.ConcurrentMap[*gws.Conn, *map[string]string]
 	addresses        *gws.ConcurrentMap[*gws.Conn, string]
@@ -196,9 +202,10 @@ func (c *Handler) handleIncomingMessages(socket *gws.Conn, incomingMessages *cha
 			msgId := strings.Trim(fields[1], "\"")
 			msgAction := strings.Trim(fields[2], "\"")
 			msgBody := fields[3]
-			count_channel <- 1
+			c.statistics.increment("request_count")
+			c.statistics.increment("curl_count")
 			resp, err := fetchDataWithRetries(client, "http://localhost:5000/call/"+msgAction+"/"+address+"/"+msgId, msgBody)
-			count_channel <- -1
+			c.statistics.decrement("curl_count")
 			if err != nil {
 				socket.WriteString("[" + CALLERROR + ",\"" + msgId + "\",\"InternalError\",\"OnMessage: connect failed\",{}]")
 				return
@@ -225,9 +232,10 @@ func (c *Handler) handleIncomingMessages(socket *gws.Conn, incomingMessages *cha
 			if ok {
 				delete((*outgoingActions), msgId)
 			}
-			count_channel <- 1
+			c.statistics.increment("request_count")
+			c.statistics.increment("curl_count")
 			_, err := fetchDataWithRetries(client, "http://localhost:5000/result/"+msgAction+"/"+address+"/"+msgId, msgBody)
-			count_channel <- -1
+			c.statistics.decrement("curl_count")
 			if err != nil {
 				log.Println(err.Error())
 			}
@@ -243,9 +251,10 @@ func (c *Handler) handleIncomingMessages(socket *gws.Conn, incomingMessages *cha
 			if ok {
 				delete((*outgoingActions), msgId)
 			}
-			count_channel <- 1
+			c.statistics.increment("request_count")
+			c.statistics.increment("curl_count")
 			_, err := fetchDataWithRetries(client, "http://localhost:5000/error/"+msgAction+"/"+address+"/"+msgId, msgBody)
-			count_channel <- -1
+			c.statistics.decrement("curl_count")
 			if err != nil {
 				log.Println(err.Error())
 			}

@@ -78,5 +78,5 @@ This application suppports the standard "-cpuprofile=" and "-memprofile=" flags 
 
 ### Performance results
 
-This application was benchmarked to build up and hold 120k connections each doing 
-one message per 10 seconds in 30 seconds and with 12k messages per second.
+This application was benchmarked to build up and hold 120k connections each doing one message per 10 seconds
+in 30 seconds (from 0 to 120k connections) and with 12k messages per second within 32GB RAM.

@@ -72,7 +72,11 @@ The CALLERROR is converted to a HTTP request with the following content:
     
     {"code": "<errorCode>", "description": "<errorDescription>", "details": {<errorDetails>}}
 
+### Profiling
 
+This application suppports the standard "-cpuprofile=" and "-memprofile=" flags to create pprof profiles.
 
+### Performance results
 
-WIP
+This application was benchmarked to build up and hold 120k connections each doing 
+one message per 10 seconds in 30 seconds and with 12k messages per second.

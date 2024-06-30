@@ -38,10 +38,10 @@ type WebSocket struct {
 }
 
 func (c *WebSocket) stress(socket *gws.Conn) {
-	for j := 1; j <= 2000; j++ {
+	for j := 1; j <= 200; j++ {
 		b, _ := json.Marshal([]any{2, "123", "hello", "hello world" + strconv.Itoa(j)})
 		socket.WriteString(string(b))
-		time.Sleep(time.Second * 10)
+		time.Sleep(time.Second * 20)
 	}
 }
 

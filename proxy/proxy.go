@@ -22,9 +22,9 @@ func init() {
 }
 
 const (
-	CALL       string = "2" // Client-to-Server
-	CALLRESULT string = "3" // Server-to-Client
-	CALLERROR  string = "4" // Server-to-Client
+	CALL       byte = '2' // Client-to-Server
+	CALLRESULT byte = '3' // Server-to-Client
+	CALLERROR  byte = '4' // Server-to-Client
 )
 
 // fetchDataWithRetries is your wrapped retrieval.
@@ -81,8 +81,8 @@ func main() {
 		statistics:       Statistics{counters: map[string]uint64{}},
 		addresses:        gws.NewConcurrentMap[*gws.Conn, string](16),
 		outgoingActions:  gws.NewConcurrentMap[*gws.Conn, *map[string]string](16),
-		incomingMessages: gws.NewConcurrentMap[*gws.Conn, *chan string](16),
-		outgoingMessages: gws.NewConcurrentMap[*gws.Conn, *chan string](16),
+		incomingMessages: gws.NewConcurrentMap[*gws.Conn, *chan []byte](16),
+		outgoingMessages: gws.NewConcurrentMap[*gws.Conn, *chan []byte](16),
 	}
 	serverOptions := gws.ServerOption{
 		CheckUtf8Enabled:  true,
@@ -135,7 +135,7 @@ func main() {
 					return
 				}
 				(*outgoingActions)[msgId] = msgAction
-				*outgoingMessages <- "[" + CALL + ",\"" + msgId + "\",\"" + msgAction + "\"," + string(bodyBytes) + "]"
+				*outgoingMessages <- []byte("[" + string(CALL) + ",\"" + msgId + "\",\"" + msgAction + "\"," + string(bodyBytes) + "]")
 			default:
 				// parse address
 				if len(parts[1]) == 0 {
@@ -189,8 +189,8 @@ type Handler struct {
 	sessions         *gws.ConcurrentMap[string, *gws.Conn]
 	outgoingActions  *gws.ConcurrentMap[*gws.Conn, *map[string]string]
 	addresses        *gws.ConcurrentMap[*gws.Conn, string]
-	incomingMessages *gws.ConcurrentMap[*gws.Conn, *chan string]
-	outgoingMessages *gws.ConcurrentMap[*gws.Conn, *chan string]
+	incomingMessages *gws.ConcurrentMap[*gws.Conn, *chan []byte]
+	outgoingMessages *gws.ConcurrentMap[*gws.Conn, *chan []byte]
 }
 
 func (c *Handler) handleConnection(socket *gws.Conn, address string) {
@@ -198,8 +198,8 @@ func (c *Handler) handleConnection(socket *gws.Conn, address string) {
 	outgoingActions := make(map[string]string)
 	c.outgoingActions.Store(socket, &outgoingActions)
 	c.addresses.Store(socket, address)
-	incomingMessages := make(chan string, 1000)
-	outgoingMessages := make(chan string, 1000)
+	incomingMessages := make(chan []byte)
+	outgoingMessages := make(chan []byte)
 	c.incomingMessages.Store(socket, &incomingMessages)
 	c.outgoingMessages.Store(socket, &outgoingMessages)
 	go c.handleIncomingMessages(socket, &incomingMessages)
@@ -211,17 +211,17 @@ func (c *Handler) handleConnection(socket *gws.Conn, address string) {
 	c.outgoingMessages.Delete(socket)
 }
 
-func (c *Handler) handleIncomingMessages(socket *gws.Conn, incomingMessages *chan string) {
+func (c *Handler) handleIncomingMessages(socket *gws.Conn, incomingMessages *chan []byte) {
 	address, ok := c.addresses.Load(socket)
 	if !ok {
 		log.Fatalln("could not find address")
 	}
 	client := &http.Client{}
 	for msg := range *incomingMessages {
-		msgType := msg[1:2]
+		msgType := msg[1]
 		switch msgType {
 		case CALL:
-			fields := strings.SplitN(msg[1:len(msg)-1], ",", 4)
+			fields := strings.SplitN(string(msg[1:len(msg)-1]), ",", 4)
 			msgId := strings.Trim(fields[1], "\"")
 			msgAction := strings.Trim(fields[2], "\"")
 			msgBody := fields[3]
@@ -230,19 +230,19 @@ func (c *Handler) handleIncomingMessages(socket *gws.Conn, incomingMessages *cha
 			responseBytes, err := fetchDataWithRetries(client, "http://localhost:5000/call/"+msgAction+"/"+address+"/"+msgId, msgBody)
 			c.statistics.decrement("curl_count")
 			if err != nil {
-				socket.WriteString("[" + CALLERROR + ",\"" + msgId + "\",\"InternalError\",\"OnMessage: connect failed\",{}]")
+				socket.WriteString("[" + string(CALLERROR) + ",\"" + msgId + "\",\"InternalError\",\"OnMessage: connect failed\",{}]")
 				return
 			}
 			if err != nil {
-				socket.WriteString("[" + CALLERROR + ",\"" + msgId + "\",\"InternalError\",\"OnMessage: read failed\",{}]")
+				socket.WriteString("[" + string(CALLERROR) + ",\"" + msgId + "\",\"InternalError\",\"OnMessage: read failed\",{}]")
 				return
 			}
-			err = socket.WriteString("[" + CALLRESULT + ",\"" + msgId + "\"," + string(responseBytes) + "]")
+			err = socket.WriteString("[" + string(CALLRESULT) + ",\"" + msgId + "\"," + string(responseBytes) + "]")
 			if err != nil {
 				log.Println(err.Error())
 			}
 		case CALLRESULT:
-			fields := strings.SplitN(msg[1:len(msg)-1], ",", 3)
+			fields := strings.SplitN(string(msg[1:len(msg)-1]), ",", 3)
 			msgId := strings.Trim(fields[1], "\"")
 			msgBody := fields[2]
 			outgoingActions, ok := c.outgoingActions.Load(socket)
@@ -261,7 +261,7 @@ func (c *Handler) handleIncomingMessages(socket *gws.Conn, incomingMessages *cha
 				log.Println(err.Error())
 			}
 		case CALLERROR:
-			fields := strings.SplitN(msg[1:len(msg)-1], ",", 5)
+			fields := strings.SplitN(string(msg[1:len(msg)-1]), ",", 5)
 			msgId := strings.Trim(fields[1], "\"")
 			msgBody := "{\"code\":" + fields[2] + ",\"description\":" + fields[3] + ",\"details\":" + fields[4] + "}"
 			outgoingActions, ok := c.outgoingActions.Load(socket)
@@ -283,9 +283,9 @@ func (c *Handler) handleIncomingMessages(socket *gws.Conn, incomingMessages *cha
 	}
 }
 
-func (c *Handler) handleOutgoingMessages(socket *gws.Conn, outgoingMessages *chan string) {
+func (c *Handler) handleOutgoingMessages(socket *gws.Conn, outgoingMessages *chan []byte) {
 	for msg := range *outgoingMessages {
-		err := socket.WriteString(msg)
+		err := socket.WriteString(string(msg))
 		if err != nil {
 			log.Println(err.Error())
 		}
@@ -308,7 +308,7 @@ func (c *Handler) OnMessage(socket *gws.Conn, message *gws.Message) {
 		}
 		return
 	}
-	msg := message.Data.String()
+	msg := []byte(message.Data.String())
 	incomingMessages, ok := c.incomingMessages.Load(socket)
 	if !ok {
 		log.Println("could not find incoming channel")

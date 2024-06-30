@@ -183,6 +183,11 @@ func main() {
 					}
 					return
 				}
+				if request.Header.Get("Upgrade") == "" {
+					writer.WriteHeader(500)
+					writer.Write([]byte("no upgrade requested"))
+					return
+				}
 				address := parts[1]
 				socket, err := upgrader.Upgrade(writer, request)
 				if err != nil {

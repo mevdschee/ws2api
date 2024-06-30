@@ -23,7 +23,6 @@ func main() {
 		})
 		if err != nil {
 			log.Print(err.Error())
-			return
 		}
 		go socket.ReadLoop()
 		go func() {

@@ -171,7 +171,6 @@ func main() {
 					writer.Write([]byte("could not upgrade socket"))
 					return
 				}
-				handler.statistics.increment("addresses")
 				go handler.handleConnection(socket, address)
 			}
 		})),
@@ -216,7 +215,9 @@ func (c *Handler) handleConnection(socket *gws.Conn, address string) {
 	c.outgoingMessages.Store(socket, &outgoingMessages)
 	go c.handleIncomingMessages(socket, &incomingMessages)
 	go c.handleOutgoingMessages(socket, &outgoingMessages)
+	c.statistics.increment("connections")
 	socket.ReadLoop()
+	c.statistics.decrement("connections")
 	c.addresses.Delete(socket)
 	c.addresses.Delete(socket)
 	c.incomingMessages.Delete(socket)
@@ -224,6 +225,7 @@ func (c *Handler) handleConnection(socket *gws.Conn, address string) {
 }
 
 func (c *Handler) handleIncomingMessages(socket *gws.Conn, incomingMessages *chan string) {
+	c.statistics.increment("messages")
 	address, ok := c.addresses.Load(socket)
 	if !ok {
 		log.Fatalln("could not find address")
@@ -236,10 +238,9 @@ func (c *Handler) handleIncomingMessages(socket *gws.Conn, incomingMessages *cha
 		switch msgType {
 		case CALL:
 			msgAction := strings.Trim(fields[2], "\"")
-			c.statistics.increment("request_count")
-			c.statistics.increment("curl_count")
+			c.statistics.increment("http_requests")
 			responseBytes, err := fetchDataWithRetries(client, "http://localhost:5000/call/"+msgAction+"/"+address+"/"+msgId, msg)
-			c.statistics.decrement("curl_count")
+			c.statistics.decrement("http_requests")
 			if err != nil {
 				socket.WriteString("[" + string(CALLERROR) + ",\"" + msgId + "\",\"InternalError\",\"connect failed\",{}]")
 				return

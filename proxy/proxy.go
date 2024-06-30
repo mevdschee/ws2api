@@ -216,8 +216,9 @@ func (c *Handler) handleConnection(socket *gws.Conn, address string) {
 	go c.handleIncomingMessages(socket, &incomingMessages)
 	go c.handleOutgoingMessages(socket, &outgoingMessages)
 	c.statistics.increment("connections")
+	c.statistics.increment("connections_active")
 	socket.ReadLoop()
-	c.statistics.decrement("connections")
+	c.statistics.decrement("connections_active")
 	c.addresses.Delete(socket)
 	c.addresses.Delete(socket)
 	c.incomingMessages.Delete(socket)
@@ -239,8 +240,9 @@ func (c *Handler) handleIncomingMessages(socket *gws.Conn, incomingMessages *cha
 		case CALL:
 			msgAction := strings.Trim(fields[2], "\"")
 			c.statistics.increment("http_requests")
+			c.statistics.increment("http_requests_active")
 			responseBytes, err := fetchDataWithRetries(client, "http://localhost:5000/call/"+msgAction+"/"+address+"/"+msgId, msg)
-			c.statistics.decrement("http_requests")
+			c.statistics.decrement("http_requests_active")
 			if err != nil {
 				socket.WriteString("[" + string(CALLERROR) + ",\"" + msgId + "\",\"InternalError\",\"connect failed\",{}]")
 				return
@@ -258,10 +260,10 @@ func (c *Handler) handleIncomingMessages(socket *gws.Conn, incomingMessages *cha
 			if ok {
 				delete((*outgoingActions), msgId)
 			}
-			c.statistics.increment("request_count")
-			c.statistics.increment("curl_count")
+			c.statistics.increment("http_requests")
+			c.statistics.increment("http_requests_active")
 			_, err := fetchDataWithRetries(client, "http://localhost:5000/result/"+msgAction+"/"+address+"/"+msgId, msg)
-			c.statistics.decrement("curl_count")
+			c.statistics.decrement("http_requests_active")
 			if err != nil {
 				log.Println(err.Error())
 			}
@@ -274,10 +276,10 @@ func (c *Handler) handleIncomingMessages(socket *gws.Conn, incomingMessages *cha
 			if ok {
 				delete((*outgoingActions), msgId)
 			}
-			c.statistics.increment("request_count")
-			c.statistics.increment("curl_count")
+			c.statistics.increment("http_requests")
+			c.statistics.increment("http_requests_active")
 			_, err := fetchDataWithRetries(client, "http://localhost:5000/error/"+msgAction+"/"+address+"/"+msgId, msg)
-			c.statistics.decrement("curl_count")
+			c.statistics.decrement("http_requests_active")
 			if err != nil {
 				log.Println(err.Error())
 			}

@@ -93,9 +93,6 @@ func (c *Handler) proxyPass(writer http.ResponseWriter, request *http.Request) {
 		log.Println("could not parse url: " + err.Error())
 	}
 	request.URL = u
-	if err != nil {
-		log.Println("could not execute request: " + err.Error())
-	}
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(r *httputil.ProxyRequest) {
 			r.SetURL(u)
@@ -107,7 +104,7 @@ func (c *Handler) proxyPass(writer http.ResponseWriter, request *http.Request) {
 		},
 		ErrorHandler: func(writer http.ResponseWriter, request *http.Request, err error) {
 			c.statistics.inc("webproxy_requests_errors{remoteHost=\"" + remoteHost + "\"}")
-			log.Println("proxy error: " + err.Error())
+			log.Println("could not proxy request: " + err.Error())
 		},
 	}
 	c.statistics.inc("webproxy_requests{remoteHost=\"" + remoteHost + "\"}")

@@ -101,8 +101,12 @@ func (c *Handler) proxyPass(writer http.ResponseWriter, request *http.Request) {
 			r.SetURL(u)
 			r.Out.Host = remoteHost
 		},
+		ModifyResponse: func(r *http.Response) error {
+			c.statistics.inc("webproxy_requests_received{remoteHost=\"" + remoteHost + "\",statusCode=\"" + strconv.Itoa(r.StatusCode) + "\"}")
+			return nil
+		},
 		ErrorHandler: func(writer http.ResponseWriter, request *http.Request, err error) {
-			c.statistics.inc("webproxy_errors{remoteHost=\"" + remoteHost + "\"}")
+			c.statistics.inc("webproxy_requests_errors{remoteHost=\"" + remoteHost + "\"}")
 			log.Println("proxy error: " + err.Error())
 		},
 	}
@@ -110,7 +114,6 @@ func (c *Handler) proxyPass(writer http.ResponseWriter, request *http.Request) {
 	start := time.Now()
 	proxy.ServeHTTP(writer, request)
 	c.statistics.add("webproxy_requests_duration{remoteHost=\""+remoteHost+"\"}", time.Since(start).Seconds())
-	c.statistics.inc("webproxy_requests_finished{remoteHost=\"" + remoteHost + "\"}")
 }
 
 func main() {

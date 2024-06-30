@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 func init() {
@@ -24,20 +25,21 @@ var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
 var memprofile = flag.String("memprofile", "", "write mem profile to file")
 
 type Statistics struct {
-	mutex    sync.Mutex
-	counters map[string]uint64
+	mutex     sync.Mutex
+	counters  map[string]uint64
+	durations map[string]float64
 }
 
-func (s *Statistics) increment(name string) {
+func (s *Statistics) inc(name string) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	s.counters[name]++
 }
 
-func (s *Statistics) decrement(name string) {
+func (s *Statistics) add(name string, val float64) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	s.counters[name]--
+	s.durations[name] += val
 }
 
 type Handler struct {
@@ -56,6 +58,15 @@ func (c *Handler) proxyPass(writer http.ResponseWriter, request *http.Request) {
 		for _, k := range keys {
 			v := c.statistics.counters[k]
 			writer.Write([]byte(k + " " + strconv.FormatUint(v, 10) + "\n"))
+		}
+		keys = []string{}
+		for key := range c.statistics.durations {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			v := c.statistics.durations[k]
+			writer.Write([]byte(k + " " + strconv.FormatFloat(v, 'f', 3, 64) + "\n"))
 		}
 		if *memprofile != "" {
 			f, err := os.Create(*memprofile)
@@ -87,18 +98,19 @@ func (c *Handler) proxyPass(writer http.ResponseWriter, request *http.Request) {
 	}
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(r *httputil.ProxyRequest) {
-			c.statistics.increment("webproxy_requests{remoteHost=\"" + remoteHost + "\"}")
 			r.SetURL(u)
 			r.Out.Host = remoteHost
 		},
 		ErrorHandler: func(writer http.ResponseWriter, request *http.Request, err error) {
-			c.statistics.increment("webproxy_errors{remoteHost=\"" + remoteHost + "\"}")
+			c.statistics.inc("webproxy_errors{remoteHost=\"" + remoteHost + "\"}")
 			log.Println("proxy error: " + err.Error())
 		},
 	}
-	c.statistics.increment("webproxy_running_requests{remoteHost=\"" + remoteHost + "\"}")
+	c.statistics.inc("webproxy_requests{remoteHost=\"" + remoteHost + "\"}")
+	start := time.Now()
 	proxy.ServeHTTP(writer, request)
-	c.statistics.decrement("webproxy_running_requests{remoteHost=\"" + remoteHost + "\"}")
+	c.statistics.add("webproxy_requests_duration{remoteHost=\""+remoteHost+"\"}", time.Since(start).Seconds())
+	c.statistics.inc("webproxy_requests_finished{remoteHost=\"" + remoteHost + "\"}")
 }
 
 func main() {
@@ -114,7 +126,8 @@ func main() {
 	// start server
 	handler := Handler{
 		statistics: Statistics{
-			counters: map[string]uint64{},
+			counters:  map[string]uint64{},
+			durations: map[string]float64{},
 		},
 	}
 	http.HandleFunc("/", handler.proxyPass)

@@ -8,6 +8,7 @@ import (
 	"os"
 	"runtime"
 	"runtime/pprof"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -151,7 +152,13 @@ func main() {
 			default:
 				// parse address
 				if len(parts[1]) == 0 {
-					for k, v := range handler.statistics.counters {
+					var keys []string
+					for key := range handler.statistics.counters {
+						keys = append(keys, key)
+					}
+					sort.Strings(keys)
+					for _, k := range keys {
+						v := handler.statistics.counters[k]
 						writer.Write([]byte(k + " " + strconv.FormatUint(v, 10) + "\n"))
 					}
 					if *memprofile != "" {

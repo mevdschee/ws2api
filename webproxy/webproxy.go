@@ -67,7 +67,10 @@ func (c *Handler) proxyPass(writer http.ResponseWriter, request *http.Request) {
 		}
 		return
 	}
-
+	if len(parts) < 3 {
+		log.Println("malformed url: " + request.URL.Path)
+		return
+	}
 	remotePath := "/" + parts[2]
 	remoteUrl := "https://" + remoteHost + remotePath
 	u, err := url.Parse(remoteUrl)

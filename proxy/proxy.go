@@ -225,13 +225,13 @@ func (c *Handler) handleConnection(socket *gws.Conn, address string) {
 }
 
 func (c *Handler) handleIncomingMessages(socket *gws.Conn, incomingMessages *chan string) {
-	c.statistics.increment("messages")
 	address, ok := c.addresses.Load(socket)
 	if !ok {
 		log.Fatalln("could not find address")
 	}
 	client := &http.Client{}
 	for msg := range *incomingMessages {
+		c.statistics.increment("messages")
 		fields := strings.Split(string(msg[1:len(msg)-1]), ",")
 		msgType := msg[1]
 		msgId := strings.Trim(fields[1], "\"")

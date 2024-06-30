@@ -15,10 +15,10 @@ func main() {
 	n := 125000
 	var wg sync.WaitGroup
 	wg.Add(n)
-	for i := 1; i <= n; i++ {
+	for i := 0; i < n; i++ {
 		c := new(WebSocket)
 		socket, _, err := gws.NewClient(c, &gws.ClientOption{
-			Addr:              "ws://127.0." + strconv.Itoa((i/256)%256) + "." + strconv.Itoa(i%255+1) + ":4000/connect" + strconv.Itoa(i),
+			Addr:              "ws://127.0.0." + strconv.Itoa(i%255+1) + ":4000/connect" + strconv.Itoa(i),
 			PermessageDeflate: gws.PermessageDeflate{Enabled: false},
 		})
 		if err != nil {

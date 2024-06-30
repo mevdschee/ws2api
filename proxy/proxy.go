@@ -117,7 +117,7 @@ func main() {
 				socket, ok := handler.sessions.Load(address)
 				if !ok {
 					writer.WriteHeader(404)
-					writer.Write([]byte("could not find address"))
+					writer.Write([]byte("could not find address: " + address))
 					return
 				}
 				requestBody, err := io.ReadAll(request.Body)

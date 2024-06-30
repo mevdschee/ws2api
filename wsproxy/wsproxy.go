@@ -84,8 +84,11 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 	handler := Handler{
-		sessions:         gws.NewConcurrentMap[string, *gws.Conn](16),
-		statistics:       Statistics{counters: map[string]uint64{}},
+		sessions: gws.NewConcurrentMap[string, *gws.Conn](16),
+		statistics: Statistics{
+			counters:  map[string]uint64{},
+			durations: map[string]float64{},
+		},
 		addresses:        gws.NewConcurrentMap[*gws.Conn, string](16),
 		outgoingActions:  gws.NewConcurrentMap[*gws.Conn, *map[string]string](16),
 		incomingMessages: gws.NewConcurrentMap[*gws.Conn, *chan string](16),
@@ -161,6 +164,15 @@ func main() {
 						v := handler.statistics.counters[k]
 						writer.Write([]byte(k + " " + strconv.FormatUint(v, 10) + "\n"))
 					}
+					keys = []string{}
+					for key := range handler.statistics.durations {
+						keys = append(keys, key)
+					}
+					sort.Strings(keys)
+					for _, k := range keys {
+						v := handler.statistics.durations[k]
+						writer.Write([]byte(k + " " + strconv.FormatFloat(v, 'f', 3, 64) + "\n"))
+					}
 					if *memprofile != "" {
 						f, err := os.Create(*memprofile)
 						if err != nil {
@@ -185,20 +197,21 @@ func main() {
 }
 
 type Statistics struct {
-	mutex    sync.Mutex
-	counters map[string]uint64
+	mutex     sync.Mutex
+	counters  map[string]uint64
+	durations map[string]float64
 }
 
-func (s *Statistics) increment(name string) {
+func (s *Statistics) inc(name string) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	s.counters[name]++
 }
 
-func (s *Statistics) decrement(name string) {
+func (s *Statistics) add(name string, val float64) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	s.counters[name]--
+	s.durations[name] += val
 }
 
 type Handler struct {
@@ -222,10 +235,9 @@ func (c *Handler) handleConnection(socket *gws.Conn, address string) {
 	c.outgoingMessages.Store(socket, &outgoingMessages)
 	go c.handleIncomingMessages(socket, &incomingMessages)
 	go c.handleOutgoingMessages(socket, &outgoingMessages)
-	c.statistics.increment("connections")
-	c.statistics.increment("connections_active")
+	c.statistics.inc("wsproxy_connections")
 	socket.ReadLoop()
-	c.statistics.decrement("connections_active")
+	c.statistics.inc("wsproxy_connections_finished")
 	c.addresses.Delete(socket)
 	c.addresses.Delete(socket)
 	c.incomingMessages.Delete(socket)
@@ -239,17 +251,18 @@ func (c *Handler) handleIncomingMessages(socket *gws.Conn, incomingMessages *cha
 	}
 	client := &http.Client{}
 	for msg := range *incomingMessages {
-		c.statistics.increment("messages")
 		fields := strings.Split(string(msg[1:len(msg)-1]), ",")
 		msgType := msg[1]
+		c.statistics.inc("wsproxy_messages_in{msgType=\"" + string(msgType) + "\"}")
 		msgId := strings.Trim(fields[1], "\"")
 		switch msgType {
 		case CALL:
 			msgAction := strings.Trim(fields[2], "\"")
-			c.statistics.increment("http_requests")
-			c.statistics.increment("http_requests_active")
+			c.statistics.inc("wsproxy_requests{msgAction=\"" + msgAction + "\"}")
+			start := time.Now()
 			responseBytes, err := fetchDataWithRetries(client, "http://localhost:5000/call/"+msgAction+"/"+address+"/"+msgId, msg)
-			c.statistics.decrement("http_requests_active")
+			c.statistics.add("wsproxy_requests_duration{msgAction=\""+msgAction+"\"}", time.Since(start).Seconds())
+			c.statistics.inc("wsproxy_requests_finished{msgAction=\"" + msgAction + "\"}")
 			if err != nil {
 				socket.WriteString("[" + string(CALLERROR) + ",\"" + msgId + "\",\"InternalError\",\"connect failed\",{}]")
 				return
@@ -267,10 +280,11 @@ func (c *Handler) handleIncomingMessages(socket *gws.Conn, incomingMessages *cha
 			if ok {
 				delete((*outgoingActions), msgId)
 			}
-			c.statistics.increment("http_requests")
-			c.statistics.increment("http_requests_active")
+			c.statistics.inc("wsproxy_requests{msgAction=\"" + msgAction + "\"}")
+			start := time.Now()
 			_, err := fetchDataWithRetries(client, "http://localhost:5000/result/"+msgAction+"/"+address+"/"+msgId, msg)
-			c.statistics.decrement("http_requests_active")
+			c.statistics.add("wsproxy_requests_duration{msgAction=\""+msgAction+"\"}", time.Since(start).Seconds())
+			c.statistics.inc("wsproxy_requests_finished{msgAction=\"" + msgAction + "\"}")
 			if err != nil {
 				log.Println(err.Error())
 			}
@@ -283,10 +297,11 @@ func (c *Handler) handleIncomingMessages(socket *gws.Conn, incomingMessages *cha
 			if ok {
 				delete((*outgoingActions), msgId)
 			}
-			c.statistics.increment("http_requests")
-			c.statistics.increment("http_requests_active")
+			c.statistics.inc("wsproxy_requests{msgAction=\"" + msgAction + "\"}")
+			start := time.Now()
 			_, err := fetchDataWithRetries(client, "http://localhost:5000/error/"+msgAction+"/"+address+"/"+msgId, msg)
-			c.statistics.decrement("http_requests_active")
+			c.statistics.add("wsproxy_requests_duration{msgAction=\""+msgAction+"\"}", time.Since(start).Seconds())
+			c.statistics.inc("wsproxy_requests_finished{msgAction=\"" + msgAction + "\"}")
 			if err != nil {
 				log.Println(err.Error())
 			}
@@ -296,6 +311,8 @@ func (c *Handler) handleIncomingMessages(socket *gws.Conn, incomingMessages *cha
 
 func (c *Handler) handleOutgoingMessages(socket *gws.Conn, outgoingMessages *chan string) {
 	for msg := range *outgoingMessages {
+		msgType := msg[1]
+		c.statistics.inc("wsproxy_messages_out{msgType=\"" + string(msgType) + "\"}")
 		err := socket.WriteString(msg)
 		if err != nil {
 			log.Println(err.Error())
@@ -304,6 +321,7 @@ func (c *Handler) handleOutgoingMessages(socket *gws.Conn, outgoingMessages *cha
 }
 
 func (c *Handler) OnPing(socket *gws.Conn, payload []byte) {
+	c.statistics.inc("wsproxy_messages_ping")
 	err := socket.WritePong(payload)
 	if err != nil {
 		log.Println(err.Error())

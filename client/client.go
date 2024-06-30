@@ -12,13 +12,13 @@ import (
 )
 
 func main() {
-	n := 120000
+	n := 1000000
 	var wg sync.WaitGroup
 	wg.Add(n)
 	for i := 1; i <= n; i++ {
 		c := new(WebSocket)
 		socket, _, err := gws.NewClient(c, &gws.ClientOption{
-			Addr:              "ws://127.0.0." + strconv.Itoa(i%255+1) + ":4000/connect" + strconv.Itoa(i),
+			Addr:              "ws://127.0." + strconv.Itoa((i/256)%256) + "." + strconv.Itoa(i%255+1) + ":4000/connect" + strconv.Itoa(i),
 			PermessageDeflate: gws.PermessageDeflate{Enabled: false},
 		})
 		if err != nil {
@@ -27,7 +27,7 @@ func main() {
 		}
 		go socket.ReadLoop()
 		go func() {
-			c.stress(socket)
+			//c.stress(socket)
 			wg.Done()
 		}()
 	}
@@ -38,15 +38,17 @@ type WebSocket struct {
 }
 
 func (c *WebSocket) stress(socket *gws.Conn) {
-	for j := 1; j <= 200; j++ {
+	for j := 1; j <= 20; j++ {
 		b, _ := json.Marshal([]any{2, "123", "hello", "hello world" + strconv.Itoa(j)})
 		socket.WriteString(string(b))
-		time.Sleep(time.Second * 20)
+		time.Sleep(time.Second * 10)
 	}
 }
 
 func (c *WebSocket) OnClose(socket *gws.Conn, err error) {
-	fmt.Printf("onerror: err=%s\n", err.Error())
+	if err != nil {
+		fmt.Printf("OnClose: err=%s\n", err.Error())
+	}
 }
 
 func (c *WebSocket) OnPong(socket *gws.Conn, payload []byte) {

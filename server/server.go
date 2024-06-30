@@ -1,17 +1,17 @@
 package main
 
 import (
-	"time"
-
 	"github.com/gofiber/fiber/v2"
 )
 
 func main() {
-	app := fiber.New()
+	app := fiber.New(fiber.Config{
+		Prefork: true,
+	})
 
-	app.Get("/", func(c *fiber.Ctx) error {
-		time.Sleep(1000)
-		return c.SendString("Hello, Worlds!")
+	app.Post("/*", func(c *fiber.Ctx) error {
+		body := string(c.Body())
+		return c.SendString("[3,\"123\",\"hello\",{\"received\":" + body + "}]")
 	})
 
 	app.Listen(":5000")

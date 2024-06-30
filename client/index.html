@@ -6,9 +6,9 @@
         const ws = new WebSocket('ws://localhost:4000/connect')
         var i = 0;
         function send() {
-                var msgData = JSON.stringify([2, "123", "hello", "hello world" + (i++)])
-                //console.log(msgData)
-                ws.send(msgData)
+            var msgData = JSON.stringify([2, "123", "hello", "hello world" + (i++)])
+            //console.log(msgData)
+            ws.send(msgData)
         }
         ws.onopen = () => {
             console.log('ws opened on browser')
@@ -19,7 +19,7 @@
             var msg = JSON.parse(message.data)
             if (msg[0] == 2) {
                 var msgData = JSON.stringify([3, "123", msg[3]])
-                //console.log(msgData)
+                console.log(msgData)
                 ws.send(msgData)
             } else {
                 send()

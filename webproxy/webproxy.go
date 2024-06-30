@@ -87,18 +87,18 @@ func (c *Handler) proxyPass(writer http.ResponseWriter, request *http.Request) {
 	}
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(r *httputil.ProxyRequest) {
-			c.statistics.increment(remoteHost + "_requests")
+			c.statistics.increment("webproxy_requests{remoteHost=\"" + remoteHost + "\"}")
 			r.SetURL(u)
 			r.Out.Host = remoteHost
 		},
 		ErrorHandler: func(writer http.ResponseWriter, request *http.Request, err error) {
-			c.statistics.increment(remoteHost + "_errors")
+			c.statistics.increment("webproxy_errors{remoteHost=\"" + remoteHost + "\"}")
 			log.Println("proxy error: " + err.Error())
 		},
 	}
-	c.statistics.increment(remoteHost + "_running_requests")
+	c.statistics.increment("webproxy_running_requests{remoteHost=\"" + remoteHost + "\"}")
 	proxy.ServeHTTP(writer, request)
-	c.statistics.decrement(remoteHost + "_running_requests")
+	c.statistics.decrement("webproxy_running_requests{remoteHost=\"" + remoteHost + "\"}")
 }
 
 func main() {

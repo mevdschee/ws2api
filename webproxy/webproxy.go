@@ -72,7 +72,11 @@ func (c *Handler) proxyPass(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	remotePath := "/" + parts[2]
-	remoteUrl := "https://" + remoteHost + remotePath
+	remoteScheme := "https://"
+	if strings.Contains(remoteHost, "localhost") {
+		remoteScheme = "http://"
+	}
+	remoteUrl := remoteScheme + remoteHost + remotePath
 	u, err := url.Parse(remoteUrl)
 	if err != nil {
 		log.Println("could not parse url: " + err.Error())

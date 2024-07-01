@@ -99,7 +99,7 @@ func (c *Handler) proxyPass(writer http.ResponseWriter, request *http.Request) {
 			r.Out.Host = remoteHost
 		},
 		ModifyResponse: func(r *http.Response) error {
-			c.statistics.inc("webproxy_requests_received{remoteHost=\"" + remoteHost + "\",statusCode=\"" + strconv.Itoa(r.StatusCode) + "\"}")
+			c.statistics.inc("webproxy_requests_received{remoteHost=\"" + remoteHost + "\",statusCode=\"" + strconv.Itoa(r.StatusCode/100) + "XX\"}")
 			return nil
 		},
 		ErrorHandler: func(writer http.ResponseWriter, request *http.Request, err error) {

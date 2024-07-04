@@ -83,5 +83,5 @@ in 30 seconds (from 0 to 120k connections) and with 12k messages per second with
 
 ### Warning
 
-The proxy application is currently unbound and will use as much RAM as it needs easily using up to 64GB of RAM.
+The roadrunner server application is currently unbound and will use as much RAM as it needs easily using up to 64GB of RAM.
 Also the setup requires many open files, so you may want to set the using "ulimit -n 200000".

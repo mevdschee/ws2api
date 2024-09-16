@@ -155,6 +155,8 @@ func main() {
 			default:
 				// parse address
 				if len(parts[1]) == 0 {
+					handler.statistics.mutex.Lock()
+					defer handler.statistics.mutex.Unlock()
 					var keys []string
 					for key := range handler.statistics.counters {
 						keys = append(keys, key)

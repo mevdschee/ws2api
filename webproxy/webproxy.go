@@ -9,11 +9,11 @@ import (
 	"os"
 	"runtime"
 	"runtime/pprof"
-	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
+
+	"github.com/mevdschee/php-observability/statistics"
 )
 
 func init() {
@@ -24,50 +24,15 @@ var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
 
 var memprofile = flag.String("memprofile", "", "write mem profile to file")
 
-type Statistics struct {
-	mutex     sync.Mutex
-	counters  map[string]uint64
-	durations map[string]float64
-}
-
-func (s *Statistics) inc(name string) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	s.counters[name]++
-}
-
-func (s *Statistics) add(name string, val float64) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	s.durations[name] += val
-}
-
 type Handler struct {
-	statistics Statistics
+	statistics statistics.Statistics
 }
 
 func (c *Handler) proxyPass(writer http.ResponseWriter, request *http.Request) {
 	parts := strings.SplitN(request.URL.Path, "/", 3)
 	remoteHost := parts[1]
 	if len(remoteHost) == 0 {
-		var keys []string
-		for key := range c.statistics.counters {
-			keys = append(keys, key)
-		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			v := c.statistics.counters[k]
-			writer.Write([]byte(k + " " + strconv.FormatUint(v, 10) + "\n"))
-		}
-		keys = []string{}
-		for key := range c.statistics.durations {
-			keys = append(keys, key)
-		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			v := c.statistics.durations[k]
-			writer.Write([]byte(k + " " + strconv.FormatFloat(v, 'f', 3, 64) + "\n"))
-		}
+		c.statistics.Write(&writer)
 		if *memprofile != "" {
 			f, err := os.Create(*memprofile)
 			if err != nil {
@@ -93,24 +58,22 @@ func (c *Handler) proxyPass(writer http.ResponseWriter, request *http.Request) {
 		log.Println("could not parse url: " + err.Error())
 	}
 	request.URL = u
+	start := time.Now()
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(r *httputil.ProxyRequest) {
 			r.SetURL(u)
 			r.Out.Host = remoteHost
 		},
 		ModifyResponse: func(r *http.Response) error {
-			c.statistics.inc("webproxy_requests_received{remoteHost=\"" + remoteHost + "\",statusCode=\"" + strconv.Itoa(r.StatusCode/100) + "XX\"}")
+			c.statistics.Add("webproxy_request_responses_"+strconv.Itoa(r.StatusCode/100)+"XX", "remoteHost", remoteHost, time.Since(start).Seconds())
 			return nil
 		},
 		ErrorHandler: func(writer http.ResponseWriter, request *http.Request, err error) {
-			c.statistics.inc("webproxy_requests_errors{remoteHost=\"" + remoteHost + "\"}")
+			c.statistics.Add("webproxy_request_errors", "remoteHost", remoteHost, time.Since(start).Seconds())
 			log.Println("could not proxy request: " + err.Error())
 		},
 	}
-	c.statistics.inc("webproxy_requests{remoteHost=\"" + remoteHost + "\"}")
-	start := time.Now()
 	proxy.ServeHTTP(writer, request)
-	c.statistics.add("webproxy_requests_duration{remoteHost=\""+remoteHost+"\"}", time.Since(start).Seconds())
 }
 
 func main() {
@@ -125,10 +88,7 @@ func main() {
 	}
 	// start server
 	handler := Handler{
-		statistics: Statistics{
-			counters:  map[string]uint64{},
-			durations: map[string]float64{},
-		},
+		statistics: *statistics.New(),
 	}
 	http.HandleFunc("/", handler.proxyPass)
 	log.Fatal(http.ListenAndServe(":8080", nil))

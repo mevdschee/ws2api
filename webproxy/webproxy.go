@@ -25,7 +25,7 @@ var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
 var memprofile = flag.String("memprofile", "", "write mem profile to file")
 
 type Handler struct {
-	statistics statistics.Statistics
+	statistics *statistics.Statistics
 }
 
 func (c *Handler) proxyPass(writer http.ResponseWriter, request *http.Request) {
@@ -73,7 +73,9 @@ func (c *Handler) proxyPass(writer http.ResponseWriter, request *http.Request) {
 			log.Println("could not proxy request: " + err.Error())
 		},
 	}
+	c.statistics.Inc("webproxy_requests_started", "remoteHost", remoteHost, 1)
 	proxy.ServeHTTP(writer, request)
+	c.statistics.Inc("webproxy_requests_finished", "remoteHost", remoteHost, 1)
 }
 
 func main() {
@@ -88,7 +90,7 @@ func main() {
 	}
 	// start server
 	handler := Handler{
-		statistics: *statistics.New(),
+		statistics: statistics.New(),
 	}
 	http.HandleFunc("/", handler.proxyPass)
 	log.Fatal(http.ListenAndServe(":8080", nil))

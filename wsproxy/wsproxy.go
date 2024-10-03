@@ -219,13 +219,13 @@ func (c *Handler) handleIncomingMessages(socket *gws.Conn, incomingMessages *cha
 		fields := strings.Split(string(msg[1:len(msg)-1]), ",")
 		msgType := msg[1]
 		msgId := strings.Trim(fields[1], "\"")
-		c.statistics.Inc("wsproxy_messages_in_started", "msgType", string(msgType), 1)
+		c.statistics.Inc("wsproxy_message", "event", "start", 1)
 		switch msgType {
 		case CALL:
 			msgAction := strings.Trim(fields[2], "\"")
 			start := time.Now()
 			responseBytes, err := fetchDataWithRetries(client, "http://localhost:5000/call/"+msgAction+"/"+address+"/"+msgId, msg)
-			c.statistics.Add("wsproxy_call_duration", "msgAction", msgAction, time.Since(start).Seconds())
+			c.statistics.Add("wsproxy_call_message", "msgAction", msgAction, time.Since(start).Seconds())
 			if err != nil {
 				socket.WriteString("[" + string(CALLERROR) + ",\"" + msgId + "\",\"InternalError\",\"connect failed\",{}]")
 				return
@@ -245,7 +245,7 @@ func (c *Handler) handleIncomingMessages(socket *gws.Conn, incomingMessages *cha
 			}
 			start := time.Now()
 			_, err := fetchDataWithRetries(client, "http://localhost:5000/result/"+msgAction+"/"+address+"/"+msgId, msg)
-			c.statistics.Add("wsproxy_call_result_duration", "msgAction", msgAction, time.Since(start).Seconds())
+			c.statistics.Add("wsproxy_call_result_message", "msgAction", msgAction, time.Since(start).Seconds())
 			if err != nil {
 				log.Println(err.Error())
 			}
@@ -260,12 +260,12 @@ func (c *Handler) handleIncomingMessages(socket *gws.Conn, incomingMessages *cha
 			}
 			start := time.Now()
 			_, err := fetchDataWithRetries(client, "http://localhost:5000/error/"+msgAction+"/"+address+"/"+msgId, msg)
-			c.statistics.Add("wsproxy_call_error_duration", "msgAction", msgAction, time.Since(start).Seconds())
+			c.statistics.Add("wsproxy_call_error_message", "msgAction", msgAction, time.Since(start).Seconds())
 			if err != nil {
 				log.Println(err.Error())
 			}
 		}
-		c.statistics.Inc("wsproxy_messages_in_finished", "msgType", string(msgType), 1)
+		c.statistics.Inc("wsproxy_message", "event", "finish", 1)
 	}
 }
 

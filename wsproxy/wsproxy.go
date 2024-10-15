@@ -68,10 +68,9 @@ func fetchDataWithRetries(c *http.Client, url string, body string) (message stri
 	return
 }
 
-var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
-var memprofile = flag.String("memprofile", "", "write mem profile to file")
-
 func main() {
+	cpuprofile := flag.String("cpuprofile", "", "write cpu profile to file")
+	memprofile := flag.String("memprofile", "", "write mem profile to file")
 	metricsAddress := flag.String("metrics", ":8080", "address to listen for Prometheus metric scraper over HTTP")
 	binaryAddress := flag.String("binary", ":9999", "address to listen for Gob metric scraper over HTTP")
 	flag.Parse()
@@ -91,7 +90,7 @@ func main() {
 		incomingMessages: gws.NewConcurrentMap[*gws.Conn, *chan string](16),
 		outgoingMessages: gws.NewConcurrentMap[*gws.Conn, *chan string](16),
 	}
-	go handler.serve(*metricsAddress)
+	go handler.serve(*memprofile, *metricsAddress)
 	go handler.serveGob(*binaryAddress)
 	serverOptions := gws.ServerOption{
 		CheckUtf8Enabled:  true,
@@ -170,9 +169,17 @@ func main() {
 	)
 }
 
-func (c *Handler) serve(metricsAddress string) {
+func (c *Handler) serve(memprofile, metricsAddress string) {
 	err := http.ListenAndServe(metricsAddress, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		c.metrics.Write(&writer)
+		if memprofile != "" {
+			f, err := os.Create(memprofile)
+			if err != nil {
+				log.Fatal(err)
+			}
+			pprof.WriteHeapProfile(f)
+			f.Close()
+		}
 	}))
 	log.Fatal(err)
 }

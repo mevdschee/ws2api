@@ -72,6 +72,8 @@ var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
 var memprofile = flag.String("memprofile", "", "write mem profile to file")
 
 func main() {
+	metricsAddress := flag.String("metrics", ":8080", "address to listen for Prometheus metric scraper over HTTP")
+	binaryAddress := flag.String("binary", ":9999", "address to listen for Gob metric scraper over HTTP")
 	flag.Parse()
 	if *cpuprofile != "" {
 		f, err := os.Create(*cpuprofile)
@@ -89,6 +91,8 @@ func main() {
 		incomingMessages: gws.NewConcurrentMap[*gws.Conn, *chan string](16),
 		outgoingMessages: gws.NewConcurrentMap[*gws.Conn, *chan string](16),
 	}
+	go handler.serve(*metricsAddress)
+	go handler.serveGob(*binaryAddress)
 	serverOptions := gws.ServerOption{
 		CheckUtf8Enabled:  true,
 		Recovery:          gws.Recovery,
@@ -98,7 +102,7 @@ func main() {
 		ParallelGolimit: 16,
 	}
 	upgrader := gws.NewUpgrader(&handler, &serverOptions)
-	log.Println("stats on: http://localhost:4000/")
+	log.Printf("metrics on: http://localhost%s/\n", *metricsAddress)
 	log.Panic(
 		http.ListenAndServe(":4000", http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 			parts := strings.Split(request.URL.Path, "/")
@@ -148,19 +152,6 @@ func main() {
 				}
 				*outgoingMessages <- msg
 			default:
-				// parse address
-				if len(parts[1]) == 0 {
-					handler.metrics.Write(&writer)
-					if *memprofile != "" {
-						f, err := os.Create(*memprofile)
-						if err != nil {
-							log.Fatal(err)
-						}
-						pprof.WriteHeapProfile(f)
-						f.Close()
-					}
-					return
-				}
 				if request.Header.Get("Upgrade") == "" {
 					writer.WriteHeader(500)
 					writer.Write([]byte("no upgrade requested"))
@@ -177,6 +168,20 @@ func main() {
 			}
 		})),
 	)
+}
+
+func (c *Handler) serve(metricsAddress string) {
+	err := http.ListenAndServe(metricsAddress, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		c.metrics.Write(&writer)
+	}))
+	log.Fatal(err)
+}
+
+func (c *Handler) serveGob(metricsAddress string) {
+	err := http.ListenAndServe(metricsAddress, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		c.metrics.WriteGob(&writer)
+	}))
+	log.Fatal(err)
 }
 
 type Handler struct {

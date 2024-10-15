@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mevdschee/php-observability/statistics"
+	"github.com/mevdschee/php-observability/metrics"
 )
 
 func init() {
@@ -25,14 +25,14 @@ var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
 var memprofile = flag.String("memprofile", "", "write mem profile to file")
 
 type Handler struct {
-	statistics *statistics.Statistics
+	metrics *metrics.Metrics
 }
 
 func (c *Handler) proxyPass(writer http.ResponseWriter, request *http.Request) {
 	parts := strings.SplitN(request.URL.Path, "/", 3)
 	remoteHost := parts[1]
 	if len(remoteHost) == 0 {
-		c.statistics.Write(&writer)
+		c.metrics.Write(&writer)
 		if *memprofile != "" {
 			f, err := os.Create(*memprofile)
 			if err != nil {
@@ -65,17 +65,17 @@ func (c *Handler) proxyPass(writer http.ResponseWriter, request *http.Request) {
 			r.Out.Host = remoteHost
 		},
 		ModifyResponse: func(r *http.Response) error {
-			c.statistics.Add("webproxy_request_responses_"+strconv.Itoa(r.StatusCode/100)+"XX", "remoteHost", remoteHost, time.Since(start).Seconds())
+			c.metrics.Add("webproxy_request_responses_"+strconv.Itoa(r.StatusCode/100)+"XX", "remoteHost", remoteHost, time.Since(start).Seconds())
 			return nil
 		},
 		ErrorHandler: func(writer http.ResponseWriter, request *http.Request, err error) {
-			c.statistics.Add("webproxy_request_errors", "remoteHost", remoteHost, time.Since(start).Seconds())
+			c.metrics.Add("webproxy_request_errors", "remoteHost", remoteHost, time.Since(start).Seconds())
 			log.Println("could not proxy request: " + err.Error())
 		},
 	}
-	c.statistics.Inc("webproxy_requests_started", "remoteHost", remoteHost, 1)
+	c.metrics.Inc("webproxy_requests_started", "remoteHost", remoteHost, 1)
 	proxy.ServeHTTP(writer, request)
-	c.statistics.Inc("webproxy_requests_finished", "remoteHost", remoteHost, 1)
+	c.metrics.Inc("webproxy_requests_finished", "remoteHost", remoteHost, 1)
 }
 
 func main() {
@@ -90,7 +90,7 @@ func main() {
 	}
 	// start server
 	handler := Handler{
-		statistics: statistics.New(),
+		metrics: metrics.New(),
 	}
 	http.HandleFunc("/", handler.proxyPass)
 	log.Fatal(http.ListenAndServe(":8080", nil))

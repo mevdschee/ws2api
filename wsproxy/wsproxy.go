@@ -13,7 +13,7 @@ import (
 
 	"github.com/avast/retry-go"
 	"github.com/lxzan/gws"
-	"github.com/mevdschee/php-observability/statistics"
+	"github.com/mevdschee/php-observability/metrics"
 )
 
 func init() {
@@ -83,7 +83,7 @@ func main() {
 	}
 	handler := Handler{
 		sessions:         gws.NewConcurrentMap[string, *gws.Conn](16),
-		statistics:       statistics.New(),
+		metrics:          metrics.New(),
 		addresses:        gws.NewConcurrentMap[*gws.Conn, string](16),
 		outgoingActions:  gws.NewConcurrentMap[*gws.Conn, *map[string]string](16),
 		incomingMessages: gws.NewConcurrentMap[*gws.Conn, *chan string](16),
@@ -150,7 +150,7 @@ func main() {
 			default:
 				// parse address
 				if len(parts[1]) == 0 {
-					handler.statistics.Write(&writer)
+					handler.metrics.Write(&writer)
 					if *memprofile != "" {
 						f, err := os.Create(*memprofile)
 						if err != nil {
@@ -181,7 +181,7 @@ func main() {
 
 type Handler struct {
 	gws.BuiltinEventHandler
-	statistics       *statistics.Statistics
+	metrics          *metrics.Metrics
 	sessions         *gws.ConcurrentMap[string, *gws.Conn]
 	outgoingActions  *gws.ConcurrentMap[*gws.Conn, *map[string]string]
 	addresses        *gws.ConcurrentMap[*gws.Conn, string]
@@ -200,9 +200,9 @@ func (c *Handler) handleConnection(socket *gws.Conn, address string) {
 	c.outgoingMessages.Store(socket, &outgoingMessages)
 	go c.handleIncomingMessages(socket, &incomingMessages)
 	go c.handleOutgoingMessages(socket, &outgoingMessages)
-	c.statistics.Inc("wsproxy_connections", "event", "start", 1)
+	c.metrics.Inc("wsproxy_connections", "event", "start", 1)
 	socket.ReadLoop()
-	c.statistics.Inc("wsproxy_connections", "event", "finish", 1)
+	c.metrics.Inc("wsproxy_connections", "event", "finish", 1)
 	c.addresses.Delete(socket)
 	c.addresses.Delete(socket)
 	c.incomingMessages.Delete(socket)
@@ -219,13 +219,13 @@ func (c *Handler) handleIncomingMessages(socket *gws.Conn, incomingMessages *cha
 		fields := strings.Split(string(msg[1:len(msg)-1]), ",")
 		msgType := msg[1]
 		msgId := strings.Trim(fields[1], "\"")
-		c.statistics.Inc("wsproxy_message", "event", "start", 1)
+		c.metrics.Inc("wsproxy_message", "event", "start", 1)
 		switch msgType {
 		case CALL:
 			msgAction := strings.Trim(fields[2], "\"")
 			start := time.Now()
 			responseBytes, err := fetchDataWithRetries(client, "http://localhost:5000/call/"+msgAction+"/"+address+"/"+msgId, msg)
-			c.statistics.Add("wsproxy_call_message", "msgAction", msgAction, time.Since(start).Seconds())
+			c.metrics.Add("wsproxy_call_message", "msgAction", msgAction, time.Since(start).Seconds())
 			if err != nil {
 				socket.WriteString("[" + string(CALLERROR) + ",\"" + msgId + "\",\"InternalError\",\"connect failed\",{}]")
 				return
@@ -245,7 +245,7 @@ func (c *Handler) handleIncomingMessages(socket *gws.Conn, incomingMessages *cha
 			}
 			start := time.Now()
 			_, err := fetchDataWithRetries(client, "http://localhost:5000/result/"+msgAction+"/"+address+"/"+msgId, msg)
-			c.statistics.Add("wsproxy_call_result_message", "msgAction", msgAction, time.Since(start).Seconds())
+			c.metrics.Add("wsproxy_call_result_message", "msgAction", msgAction, time.Since(start).Seconds())
 			if err != nil {
 				log.Println(err.Error())
 			}
@@ -260,19 +260,19 @@ func (c *Handler) handleIncomingMessages(socket *gws.Conn, incomingMessages *cha
 			}
 			start := time.Now()
 			_, err := fetchDataWithRetries(client, "http://localhost:5000/error/"+msgAction+"/"+address+"/"+msgId, msg)
-			c.statistics.Add("wsproxy_call_error_message", "msgAction", msgAction, time.Since(start).Seconds())
+			c.metrics.Add("wsproxy_call_error_message", "msgAction", msgAction, time.Since(start).Seconds())
 			if err != nil {
 				log.Println(err.Error())
 			}
 		}
-		c.statistics.Inc("wsproxy_message", "event", "finish", 1)
+		c.metrics.Inc("wsproxy_message", "event", "finish", 1)
 	}
 }
 
 func (c *Handler) handleOutgoingMessages(socket *gws.Conn, outgoingMessages *chan string) {
 	for msg := range *outgoingMessages {
 		msgType := msg[1]
-		c.statistics.Inc("wsproxy_messages_out", "msgType", string(msgType), 1)
+		c.metrics.Inc("wsproxy_messages_out", "msgType", string(msgType), 1)
 		err := socket.WriteString(msg)
 		if err != nil {
 			log.Println(err.Error())
@@ -281,7 +281,7 @@ func (c *Handler) handleOutgoingMessages(socket *gws.Conn, outgoingMessages *cha
 }
 
 func (c *Handler) OnPing(socket *gws.Conn, payload []byte) {
-	c.statistics.Inc("wsproxy_ping", "socket", socket.RemoteAddr().String(), 1)
+	c.metrics.Inc("wsproxy_ping", "socket", socket.RemoteAddr().String(), 1)
 	err := socket.WritePong(payload)
 	if err != nil {
 		log.Println(err.Error())

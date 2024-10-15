@@ -6,7 +6,7 @@ import (
 
 func main() {
 	app := fiber.New(fiber.Config{
-		Prefork: true,
+		Prefork: false,
 	})
 
 	app.Post("/*", func(c *fiber.Ctx) error {

@@ -20,9 +20,9 @@ NB: Use HAproxy with Origin header and disabled Keep-Alive to go from WSS to WS.
 
 ### Websocket
 
-Websockets send an HTTP upgrade to the server and after that they can send messages in either direction.
+A WebSocket (WS) can send an HTTP upgrade to the server and after that they can send messages in either direction.
 
-### Websocket upgrade
+### WS upgrade
 
 A connect from a websocket client may look like this:
 

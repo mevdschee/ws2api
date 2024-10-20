@@ -1,4 +1,4 @@
-# WS2API
+# WS to API
 
 Proxy messages from Websockets to RoadRunner PHP.
 
@@ -42,7 +42,7 @@ And the connection upgrade is made when the response to this message is:
 
 Other strings are treated as error messages.
 
-### Websocket to REST
+### WS to API
 
 The websocket messages that are received are sent using a HTTP request to the server:
 
@@ -57,7 +57,7 @@ Adn the HTTP request may have a response:
 
 If the response is non-empty, then it is sent back on the (right) websocket as a message in the reverse direction.
 
-### Rest to Websocket
+### API to WS
 
 A websocket message can be also be sent using a HTTP request to the websocket proxy:
 

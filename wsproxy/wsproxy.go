@@ -197,8 +197,15 @@ func (wsh webSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		wsh.metrics.Inc("wsproxy_connection", "event", "start", 1)
 		for {
 			wsh.metrics.Inc("wsproxy_message", "event", "start", 1)
+			// receive message
+			message, err := s.readString()
+			if err != nil {
+				log.Printf("error %s", err)
+				break
+			}
+			//log.Printf("Receive message %s", message)
 			start := time.Now()
-			err = s.handleIncomingMessage(address, client)
+			err = s.handleIncomingMessage(address, client, message)
 			wsh.metrics.Add("wsproxy_message", "address", address, time.Since(start).Seconds())
 			wsh.metrics.Inc("wsproxy_message", "event", "finish", 1)
 			if err != nil {
@@ -229,13 +236,7 @@ func (s webSocket) writeString(message string) error {
 	return s.connection.WriteMessage(websocket.TextMessage, []byte(message))
 }
 
-func (s *webSocket) handleIncomingMessage(address string, client *http.Client) error {
-	// receive message
-	message, err := s.readString()
-	if err != nil {
-		return err
-	}
-	//log.Printf("Receive message %s", message)
+func (s *webSocket) handleIncomingMessage(address string, client *http.Client, message string) error {
 	// handle message
 	responseBytes, err := fetchDataWithRetries(client, "http://localhost:5000/"+address, message)
 	if err != nil {

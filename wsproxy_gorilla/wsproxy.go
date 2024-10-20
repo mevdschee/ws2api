@@ -22,6 +22,12 @@ func init() {
 	runtime.GOMAXPROCS(8)
 }
 
+const (
+	CALL       byte = '2' // Client-to-Server
+	CALLRESULT byte = '3' // Server-to-Client
+	CALLERROR  byte = '4' // Server-to-Client
+)
+
 // fetchDataWithRetries is your wrapped retrieval.
 // It works with a static configuration for the retries,
 // but obviously, you can generalize this function further.
@@ -29,13 +35,7 @@ func fetchDataWithRetries(c *http.Client, url string, body string) (message stri
 	retry.Do(
 		// The actual function that does "stuff"
 		func() error {
-			var r *http.Response
-			var err error
-			if len(body) == 0 {
-				r, err = c.Get(url)
-			} else {
-				r, err = c.Post(url, "application/json", strings.NewReader(body))
-			}
+			r, err := c.Post(url, "application/json", strings.NewReader(body))
 			if err != nil {
 				return err
 			}
@@ -86,7 +86,10 @@ func main() {
 	webSocketHandler := webSocketHandler{
 		mutex:       &sync.Mutex{},
 		upgrader:    websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }},
-		connections: map[string]*webSocket{},
+		readLocks:   map[*websocket.Conn]*sync.Mutex{},
+		writeLocks:  map[*websocket.Conn]*sync.Mutex{},
+		connections: map[string]*websocket.Conn{},
+		msgActions:  map[string]string{},
 		metrics:     metrics.New(),
 	}
 	go webSocketHandler.serve(*memprofile, *metricsAddress)
@@ -98,14 +101,11 @@ func main() {
 type webSocketHandler struct {
 	upgrader    websocket.Upgrader
 	mutex       *sync.Mutex
-	connections map[string]*webSocket
+	readLocks   map[*websocket.Conn]*sync.Mutex
+	writeLocks  map[*websocket.Conn]*sync.Mutex
+	connections map[string]*websocket.Conn
+	msgActions  map[string]string
 	metrics     *metrics.Metrics
-}
-
-type webSocket struct {
-	readLock   *sync.Mutex
-	writeLock  *sync.Mutex
-	connection *websocket.Conn
 }
 
 func (wsh webSocketHandler) serve(memprofile, metricsAddress string) {
@@ -123,22 +123,50 @@ func (wsh webSocketHandler) serve(memprofile, metricsAddress string) {
 	log.Fatal(err)
 }
 
-func (wsh webSocketHandler) storeConnection(c *websocket.Conn, address string) *webSocket {
+func (wsh webSocketHandler) getReadLock(c *websocket.Conn) *sync.Mutex {
 	wsh.mutex.Lock()
 	defer wsh.mutex.Unlock()
-	s := &webSocket{
-		readLock:   &sync.Mutex{},
-		writeLock:  &sync.Mutex{},
-		connection: c,
+	readLock, ok := wsh.readLocks[c]
+	if !ok {
+		readLock = &sync.Mutex{}
+		wsh.readLocks[c] = readLock
 	}
-	wsh.connections[address] = s
-	return s
+	return readLock
 }
 
-func (wsh webSocketHandler) retrieveConnection(address string) *webSocket {
+func (wsh webSocketHandler) getWriteLock(c *websocket.Conn) *sync.Mutex {
+	wsh.mutex.Lock()
+	defer wsh.mutex.Unlock()
+	writeLock, ok := wsh.writeLocks[c]
+	if !ok {
+		writeLock = &sync.Mutex{}
+		wsh.writeLocks[c] = writeLock
+	}
+	return writeLock
+}
+
+func (wsh webSocketHandler) storeConnection(c *websocket.Conn, address string) {
+	wsh.mutex.Lock()
+	defer wsh.mutex.Unlock()
+	wsh.connections[address] = c
+}
+
+func (wsh webSocketHandler) retrieveConnection(address string) *websocket.Conn {
 	wsh.mutex.Lock()
 	defer wsh.mutex.Unlock()
 	return wsh.connections[address]
+}
+
+func (wsh webSocketHandler) storeMsgAction(msgId string, msgAction string) {
+	wsh.mutex.Lock()
+	defer wsh.mutex.Unlock()
+	wsh.msgActions[msgId] = msgAction
+}
+
+func (wsh webSocketHandler) retrieveMsgAction(msgId string) string {
+	wsh.mutex.Lock()
+	defer wsh.mutex.Unlock()
+	return wsh.msgActions[msgId]
 }
 
 func (wsh webSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -151,8 +179,8 @@ func (wsh webSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodPost: // post
-		s := wsh.retrieveConnection(address)
-		if s == nil {
+		c := wsh.retrieveConnection(address)
+		if c == nil {
 			w.WriteHeader(404)
 			w.Write([]byte("could not find address: " + address))
 			return
@@ -165,12 +193,7 @@ func (wsh webSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte("could not read body"))
 			return
 		}
-		err = s.handleOutgoingMessage(message)
-		if err != nil {
-			w.WriteHeader(500)
-			w.Write([]byte(err.Error()))
-			return
-		}
+		wsh.handleOutgoingMessage(c, message)
 	default: // get
 		if r.Header.Get("Upgrade") == "" {
 			w.WriteHeader(500)
@@ -178,7 +201,7 @@ func (wsh webSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		client := &http.Client{}
-		responseBytes, err := fetchDataWithRetries(client, "http://localhost:5000/"+address, "")
+		responseBytes, err := fetchDataWithRetries(client, "http://localhost:5000/connect", address)
 		if err != nil {
 			log.Printf("error %s when proxying connect", err)
 			return
@@ -193,11 +216,11 @@ func (wsh webSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		defer c.Close()
-		s := wsh.storeConnection(c, address)
+		wsh.storeConnection(c, address)
 		wsh.metrics.Inc("wsproxy_connection", "event", "start", 1)
 		for {
 			wsh.metrics.Inc("wsproxy_message", "event", "start", 1)
-			err = s.handleIncomingMessage(address, client)
+			err = wsh.handleIncomingMessage(c, address, client)
 			wsh.metrics.Inc("wsproxy_message", "event", "finish", 1)
 			if err != nil {
 				log.Printf("error %s", err)
@@ -208,10 +231,11 @@ func (wsh webSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s webSocket) readString() (string, error) {
-	s.readLock.Lock()
-	defer s.readLock.Unlock()
-	mt, msg, err := s.connection.ReadMessage()
+func (wsh webSocketHandler) readString(c *websocket.Conn) (string, error) {
+	readLock := wsh.getReadLock(c)
+	readLock.Lock()
+	defer readLock.Unlock()
+	mt, msg, err := c.ReadMessage()
 	if err != nil {
 		return "", err
 	}
@@ -221,34 +245,71 @@ func (s webSocket) readString() (string, error) {
 	return string(msg), nil
 }
 
-func (s webSocket) writeString(message string) error {
-	s.writeLock.Lock()
-	defer s.writeLock.Unlock()
-	return s.connection.WriteMessage(websocket.TextMessage, []byte(message))
+func (wsh webSocketHandler) writeString(c *websocket.Conn, message string) error {
+	writeLock := wsh.getWriteLock(c)
+	writeLock.Lock()
+	defer writeLock.Unlock()
+	return c.WriteMessage(websocket.TextMessage, []byte(message))
 }
 
-func (s *webSocket) handleIncomingMessage(address string, client *http.Client) error {
+func (wsh webSocketHandler) handleIncomingMessage(c *websocket.Conn, address string, client *http.Client) error {
 	// receive message
-	message, err := s.readString()
+	message, err := wsh.readString(c)
 	if err != nil {
 		return err
 	}
 	//log.Printf("Receive message %s", message)
 	// handle message
-	responseBytes, err := fetchDataWithRetries(client, "http://localhost:5000/"+address, message)
-	if err != nil {
-		return err
-	}
-	if len(responseBytes) > 0 {
-		err = s.writeString(responseBytes)
+	fields := strings.Split(message[1:len(message)-1], ",")
+	msgType := message[1]
+	msgId := strings.Trim(fields[1], "\"")
+	switch msgType {
+	case CALL:
+		msgAction := strings.Trim(fields[2], "\"")
+		wsh.storeMsgAction(msgId, msgAction)
+		start := time.Now()
+		responseBytes, err := fetchDataWithRetries(client, "http://localhost:5000/call/"+msgAction+"/"+address+"/"+msgId, message)
+		wsh.metrics.Add("wsproxy_call_message", "msgAction", msgAction, time.Since(start).Seconds())
 		if err != nil {
-			return err
+			wsh.writeString(c, "["+string(CALLERROR)+",\""+msgId+"\",\"InternalError\",\"connect failed\",{}]")
+			log.Println(err.Error())
+			return nil
+		}
+		err = wsh.writeString(c, "["+string(CALLRESULT)+",\""+msgId+"\","+responseBytes+"]")
+		if err != nil {
+			log.Println(err.Error())
+		}
+	case CALLRESULT:
+		msgAction := wsh.retrieveMsgAction(msgId)
+		start := time.Now()
+		_, err := fetchDataWithRetries(client, "http://localhost:5000/result/"+msgAction+"/"+address+"/"+msgId, message)
+		wsh.metrics.Add("wsproxy_call_result_message", "msgAction", msgAction, time.Since(start).Seconds())
+		if err != nil {
+			log.Println(err.Error())
+		}
+	case CALLERROR:
+		msgAction := wsh.retrieveMsgAction(msgId)
+		start := time.Now()
+		_, err := fetchDataWithRetries(client, "http://localhost:5000/error/"+msgAction+"/"+address+"/"+msgId, message)
+		wsh.metrics.Add("wsproxy_call_error_message", "msgAction", msgAction, time.Since(start).Seconds())
+		if err != nil {
+			log.Println(err.Error())
 		}
 	}
 	return nil
 }
 
-func (s *webSocket) handleOutgoingMessage(message string) error {
+func (wsh webSocketHandler) handleOutgoingMessage(c *websocket.Conn, message string) {
 	// handle message
-	return s.writeString(message)
+	msgType := message[1]
+	switch msgType {
+	case CALL:
+		wsh.metrics.Inc("wsproxy_messages_out", "msgType", string(msgType), 1)
+		err := wsh.writeString(c, message)
+		if err != nil {
+			log.Println(err.Error())
+		}
+	default:
+		log.Printf("message type not accepted: '%s'\n", string(msgType))
+	}
 }

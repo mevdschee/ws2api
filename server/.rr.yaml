@@ -9,12 +9,12 @@ server:
 http:
   address: "0.0.0.0:5000"
   pool:
-    num_workers: 200
+    num_workers: 20
     supervisor:
       # watch_tick defines how often to check the state of the workers (seconds)
-      watch_tick: 1s
+      watch_tick: 10s
       # ttl defines maximum time worker is allowed to live (seconds)
-      ttl: 1s
+      ttl: 10s
 
 logs:
   level: error

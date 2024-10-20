@@ -59,10 +59,10 @@ If the response is non-empty, then it is sent back on the (right) websocket as a
 
 ### API to WS
 
-A websocket message can be also be sent using a HTTP request to the websocket proxy:
+A websocket message can be also be sent using a HTTP request to the websocket server:
 
     POST /<ClientId>
-    Host: wsproxy
+    Host: WS server
     
     <RequestMessage>
 

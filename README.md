@@ -1,24 +1,26 @@
 # WS2API
 
-Proxy messages from Websockets to RoadRunner PHP. Use HAproxy with Origin header and disabled Keep-Alive to go from WSS to WS.
+Proxy messages from Websockets to RoadRunner PHP.
 
-    WS client --[ws upgrade]--> WS server --[http get request]--> web server
+    WS client --[ws upgrade]--> WS server --[http get request]--> API server
 
-    WS client <--[ws connect]-- WS server <--[http response "ok"]-- web server
+    WS client <--[ws connect]-- WS server <--[http response "ok"]-- API server
     
-    WS client --[message]--> WS server --[http post request]--> web server
+    WS client --[message]--> WS server --[http post request]--> API server
 
-    WS client <--[message]-- WS server <--[http response]-- web server
+    WS client <--[message]-- WS server <--[http response]-- API server
 
 And also:
 
-    web server --[http post request]--> WS server --[message]--> WS client
+    API server --[http post request]--> WS server --[message]--> WS client
 
 Note that responses to server-to-client requests are handled as client-to-server requests.
 
+NB: Use HAproxy with Origin header and disabled Keep-Alive to go from WSS to WS.
+
 ### Websocket
 
-Websocket messages can send messages.
+Websockets send an HTTP upgrade after that they can send messages in either direction.
 
 ### Websocket upgrade
 
@@ -32,7 +34,7 @@ A connect from a websocket client may look like this:
 The websocket upgrade is converted to a HTTP request with the following content:
 
     GET /<ClientId>
-    Host: web server
+    Host: API server
  
 And the connection upgrade is made when the response to this message is:
 
@@ -45,7 +47,7 @@ Other strings are treated as error messages.
 The websocket messages that are received are sent using a HTTP request to the server:
 
     POST /<ClientId>
-    Host: web server
+    Host: API server
     
     <RequestMessage>
 

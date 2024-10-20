@@ -2,78 +2,69 @@
 
 Proxy messages from Websockets to RoadRunner PHP. Use HAproxy with Origin header and disabled Keep-Alive to go from WSS to WS.
 
+    WS client --[ws upgrade]--> WS server --[http get request]--> web server
+
+    WS client <--[ws connect]-- WS server <--[http response "ok"]-- web server
+    
+    WS client --[message]--> WS server --[http post request]--> web server
+
+    WS client <--[message]-- WS server <--[http response]-- web server
+
+And also:
+
+    web server --[http post request]--> WS server --[message]--> WS client
+
+Note that responses to server-to-client requests are handled as client-to-server requests.
+
 ### Websocket
 
-Websocket messages can either send messages.
+Websocket messages can send messages.
 
-### Websocket to REST
+### Websocket upgrade
 
-We convert RPC calls (from 4.2.1) to the above RPC specification to REST calls
+A connect from a websocket client may look like this:
 
     GET /<ClientId> HTTP/1.1
+    Host: WS server
     Upgrade: websocket
     Connection: Upgrade
 
-And after the websocket is upgraded, the syntax of a CALL looks like this:
+The websocket upgrade is converted to a HTTP request with the following content:
 
-    [<MessageTypeId>, "<MessageId>", "<Action>", {<Payload>}]
-
-And the result looks like this
-
-    [<MessageTypeId>, "<MessageId>", {<Payload>}]
-
-In case of an error it is:
-
-    [<MessageTypeId>, "<MessageId>", "<errorCode>", "<errorDescription>", {<errorDetails>}]
-
-First the websocket upgrade is converted to a HTTP request with the following content:
-
-    POST /connect
-    Content-Type: application/json
-
-    "<ClientId>"
+    GET /<ClientId>
+    Host: web server
  
-And the connection is made when the response to this message is:
+And the connection upgrade is made when the response to this message is:
 
-    "ok"
+    ok
 
-The CALL is converted to a HTTP request with the following content:
+Other strings are treated as error messages.
 
-    POST /call/<Action>/<ClientId>/<MessageId>
-    Content-Type: application/json
+### Websocket to REST
+
+The websocket messages that are received are sent using a HTTP request to the server:
+
+    POST /<ClientId>
+    Host: web server
     
-    {<Payload>}
- 
-And the JSON Payload of the result is in the body of the HTTP response.
+    <RequestMessage>
 
-    Content-Type: application/json
-    
-    {<Payload>}
+Adn the HTTP request may have a response:
+
+    <ResponseMessage>
+
+If the response is non-empty, then it is sent back on the (right) websocket as a message in the reverse direction.
 
 ### Rest to Websocket
 
-The CALL is can be made with a HTTP request with the following content:
+A websocket message can be also be sent using a HTTP request to the websocket proxy:
 
-    POST /call/<Action>/<ClientId>/<MessageId>
-    Content-Type: application/json
+    POST /<ClientId>
+    Host: wsproxy
     
-    {<Payload>}
+    <RequestMessage>
 
-And the JSON Payload is sent in a separate HTTP response.
-
-The CALLRESULT is converted to a HTTP request with the following content:
-
-    POST /result/<Action>/<ClientId>/<MessageId>
-    Content-Type: application/json
-    
-    {<Payload>}
-
-The CALLERROR is converted to a HTTP request with the following content:
-
-    POST /error/<Action>/<ClientId>/<MessageId>
-    Content-Type: application/json
-    
-    {"code": "<errorCode>", "description": "<errorDescription>", "details": {<errorDetails>}}
+The response that the WS client may send needs to be filtered from the incomming request messages.
 
 ### Profiling
 

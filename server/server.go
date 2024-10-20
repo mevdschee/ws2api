@@ -10,7 +10,7 @@ func main() {
 	})
 
 	app.Post("/connect", func(c *fiber.Ctx) error {
-		return c.SendString("\"ok\"")
+		return c.SendString("ok")
 	})
 
 	app.Post("/*", func(c *fiber.Ctx) error {

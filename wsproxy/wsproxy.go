@@ -34,7 +34,7 @@ func fetchDataWithRetries(c *http.Client, url string, body string) (message stri
 			if len(body) == 0 {
 				r, err = c.Get(url)
 			} else {
-				r, err = c.Post(url, "application/json", strings.NewReader(body))
+				r, err = c.Post(url, "plain/text", strings.NewReader(body))
 			}
 			if err != nil {
 				return err
@@ -183,7 +183,7 @@ func (wsh webSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			log.Printf("error %s when proxying connect", err)
 			return
 		}
-		if responseBytes != "\"ok\"" {
+		if responseBytes != "ok" {
 			log.Printf("not allowed to connect: %s", responseBytes)
 			return
 		}

@@ -8,6 +8,8 @@ require (
 	github.com/lxzan/gws v1.8.2
 )
 
+require github.com/gorilla/websocket v1.5.3 // indirect
+
 require (
 	github.com/andybalholm/brotli v1.0.5 // indirect
 	github.com/dolthub/maphash v0.1.0 // indirect

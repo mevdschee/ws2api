@@ -197,7 +197,9 @@ func (wsh webSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		wsh.metrics.Inc("wsproxy_connection", "event", "start", 1)
 		for {
 			wsh.metrics.Inc("wsproxy_message", "event", "start", 1)
+			start := time.Now()
 			err = s.handleIncomingMessage(address, client)
+			wsh.metrics.Add("wsproxy_message", "address", address, time.Since(start).Seconds())
 			wsh.metrics.Inc("wsproxy_message", "event", "finish", 1)
 			if err != nil {
 				log.Printf("error %s", err)

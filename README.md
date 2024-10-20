@@ -2,17 +2,9 @@
 
 Proxy messages from Websockets to RoadRunner PHP. Use HAproxy with Origin header and disabled Keep-Alive to go from WSS to WS.
 
-### Websocket RPC framework
+### Websocket
 
-Websocket messages can follow the WAMP protocol (see: https://wamp-proto.org/index.html) and especially the RPC implementation as described here:
-
-https://wamp-proto.org/wamp_latest_ietf.html#name-calling-and-invocations
-
-We implement the simplified RPC part of the WAMP protocol as specified in the OCPP protocol here:
-
-https://openchargealliance.org/my-oca/ocpp/
-
-Specifically look for chapter 4 "RPC Framework" as defined in the JSON specification.
+Websocket messages can either send messages.
 
 ### Websocket to REST
 

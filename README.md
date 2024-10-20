@@ -34,6 +34,17 @@ In case of an error it is:
 
     [<MessageTypeId>, "<MessageId>", "<errorCode>", "<errorDescription>", {<errorDetails>}]
 
+First the websocket upgrade is converted to a HTTP request with the following content:
+
+    POST /connect
+    Content-Type: application/json
+
+    "<ClientId>"
+ 
+And the connection is made when the response to this message is:
+
+    "ok"
+
 The CALL is converted to a HTTP request with the following content:
 
     POST /call/<Action>/<ClientId>/<MessageId>

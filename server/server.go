@@ -9,7 +9,7 @@ func main() {
 		Prefork: true,
 	})
 
-	app.Post("/connect/*", func(c *fiber.Ctx) error {
+	app.Post("/connect", func(c *fiber.Ctx) error {
 		return c.SendString("ok")
 	})
 

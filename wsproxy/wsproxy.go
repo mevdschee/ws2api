@@ -201,12 +201,12 @@ func (wsh webSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		client := &http.Client{}
-		responseBytes, err := fetchDataWithRetries(client, "http://localhost:5000/connect/"+address, "")
+		responseBytes, err := fetchDataWithRetries(client, "http://localhost:5000/connect", address)
 		if err != nil {
 			log.Printf("error %s when proxying connect", err)
 			return
 		}
-		if responseBytes != "ok" {
+		if responseBytes != "\"ok\"" {
 			log.Printf("not allowed to connect: %s", responseBytes)
 			return
 		}

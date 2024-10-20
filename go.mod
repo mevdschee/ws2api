@@ -1,6 +1,6 @@
 module github.com/mevdschee/ws2api
 
-go 1.22.2
+go 1.18
 
 require (
 	github.com/avast/retry-go v3.0.0+incompatible
@@ -8,7 +8,7 @@ require (
 	github.com/lxzan/gws v1.8.2
 )
 
-require github.com/gorilla/websocket v1.5.3 // indirect
+require github.com/gorilla/websocket v1.5.3
 
 require (
 	github.com/andybalholm/brotli v1.0.5 // indirect

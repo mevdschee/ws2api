@@ -44,7 +44,7 @@ Other strings are treated as error messages.
 
 ### WS to API
 
-The websocket messages that are received are sent using a HTTP request to the server:
+The websocket messages that are received are sent using a HTTP request to the API server:
 
     POST /<ClientId>
     Host: API server

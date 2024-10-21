@@ -74,7 +74,7 @@ func main() {
 	cpuprofile := flag.String("cpuprofile", "", "write cpu profile to file")
 	memprofile := flag.String("memprofile", "", "write mem profile to file")
 	metricsAddress := flag.String("metrics", ":8080", "address to listen for Prometheus metric scraper over HTTP")
-	url := flag.String("url", "http://localhost:5000/", "url of the webserver to relay websocket messages to")
+	url := flag.String("url", "http://localhost:5000/", "url of the API server to relay websocket messages to")
 	flag.Parse()
 	if *cpuprofile != "" {
 		f, err := os.Create(*cpuprofile)

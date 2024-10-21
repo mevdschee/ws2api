@@ -74,6 +74,7 @@ func main() {
 	cpuprofile := flag.String("cpuprofile", "", "write cpu profile to file")
 	memprofile := flag.String("memprofile", "", "write mem profile to file")
 	metricsAddress := flag.String("metrics", ":8080", "address to listen for Prometheus metric scraper over HTTP")
+	url := flag.String("url", "http://localhost:5000/", "url of the webserver to relay websocket messages to")
 	flag.Parse()
 	if *cpuprofile != "" {
 		f, err := os.Create(*cpuprofile)
@@ -88,6 +89,7 @@ func main() {
 		upgrader:    websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }},
 		connections: map[string]*webSocket{},
 		metrics:     metrics.New(),
+		url:         *url,
 	}
 	go webSocketHandler.serve(*memprofile, *metricsAddress)
 	http.Handle("/", webSocketHandler)
@@ -100,6 +102,7 @@ type webSocketHandler struct {
 	mutex       *sync.Mutex
 	connections map[string]*webSocket
 	metrics     *metrics.Metrics
+	url         string
 }
 
 type webSocket struct {
@@ -178,7 +181,7 @@ func (wsh webSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		client := &http.Client{}
-		responseBytes, err := fetchDataWithRetries(client, "http://localhost:5000/"+address, "")
+		responseBytes, err := fetchDataWithRetries(client, wsh.url+address, "")
 		if err != nil {
 			log.Printf("error %s when proxying connect", err)
 			return
@@ -205,7 +208,7 @@ func (wsh webSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			//log.Printf("Receive message %s", message)
 			start := time.Now()
-			err = s.handleIncomingMessage(address, client, message)
+			err = s.handleIncomingMessage(address, client, message, wsh.url)
 			wsh.metrics.Add("wsproxy_message", "address", address, time.Since(start).Seconds())
 			wsh.metrics.Inc("wsproxy_message", "event", "finish", 1)
 			if err != nil {
@@ -236,9 +239,9 @@ func (s webSocket) writeString(message string) error {
 	return s.connection.WriteMessage(websocket.TextMessage, []byte(message))
 }
 
-func (s *webSocket) handleIncomingMessage(address string, client *http.Client, message string) error {
+func (s *webSocket) handleIncomingMessage(address string, client *http.Client, message string, url string) error {
 	// handle message
-	responseBytes, err := fetchDataWithRetries(client, "http://localhost:5000/"+address, message)
+	responseBytes, err := fetchDataWithRetries(client, url+address, message)
 	if err != nil {
 		return err
 	}

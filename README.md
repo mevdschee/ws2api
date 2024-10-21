@@ -1,6 +1,6 @@
 # WS to API
 
-Proxy messages from Websockets to a RoadRunner PHP API.
+Proxy messages from Websockets to a RoadRunner PHP API server.
 
     WS client --[ws upgrade]--> WS server --[http get request]--> API server
 

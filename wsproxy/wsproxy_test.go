@@ -17,15 +17,14 @@ func waitForPort(host string, timeout time.Duration) {
 	}
 }
 
-// TestHelloName calls greetings.Hello with a name, checking
-// for a valid return value.
+// TestConnect tries to connect with a websocket and checks
+// that a websocket connection is made when "ok" is returned.
 func TestConnect(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("ok"))
 	}))
 	go wsListener(":4000", server.URL+"/")
 	waitForPort(":4000", 1*time.Second)
-	// Connect to the server
 	var want error = nil
 	ws, _, got := websocket.DefaultDialer.Dial("ws://localhost:4000/test", nil)
 	if got != want {
@@ -34,13 +33,14 @@ func TestConnect(t *testing.T) {
 	defer ws.Close()
 }
 
+// TestCannotConnect tries to connect with a websocket and checks
+// that a websocket connection is failing when "ko" is returned.
 func TestCannotConnect(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("ko"))
 	}))
 	go wsListener(":4000", server.URL+"/")
 	waitForPort(":4000", 1*time.Second)
-	// Connect to the server
 	want := "websocket: bad handshake"
 	ws, _, err := websocket.DefaultDialer.Dial("ws://localhost:4000/test", nil)
 	got := err.Error()

@@ -97,7 +97,6 @@ type webSocketHandler struct {
 	upgrader      websocket.Upgrader
 	mutex         *sync.Mutex
 	connections   map[string]*webSocket
-	metrics       *metrics.Metrics
 	listenAddress string
 	serverUrl     string
 }

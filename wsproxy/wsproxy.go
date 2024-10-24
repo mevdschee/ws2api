@@ -78,7 +78,7 @@ func main() {
 	listenAddress := flag.String("listen", ":4000", "address to listen for high frequent events over TCP")
 	binaryAddress := flag.String("binary", ":9999", "address to listen for Gob metric scraper over HTTP")
 	metricsAddress := flag.String("metrics", ":8080", "address to listen for Prometheus metric scraper over HTTP")
-	url := flag.String("url", "http://localhost:5000/", "url of the API server to relay websocket messages to")
+	serverUrl := flag.String("url", "http://localhost:5000/", "url of the API server to relay websocket messages to")
 	flag.Parse()
 	if *cpuprofile != "" {
 		f, err := os.Create(*cpuprofile)
@@ -88,22 +88,9 @@ func main() {
 		pprof.StartCPUProfile(f)
 		defer pprof.StopCPUProfile()
 	}
-	webSocketHandler := webSocketHandler{
-		mutex:         &sync.Mutex{},
-		upgrader:      websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }},
-		connections:   map[string]*webSocket{},
-		listenAddress: *listenAddress,
-		url:           *url,
-	}
 	go serve(*memprofile, *metricsAddress)
 	go serveGob(*binaryAddress)
-	wsListener(webSocketHandler)
-}
-
-func wsListener(webSocketHandler webSocketHandler) {
-	http.Handle("/", webSocketHandler)
-	log.Print("Starting server...")
-	log.Fatal(http.ListenAndServe(webSocketHandler.listenAddress, nil))
+	wsListener(*listenAddress, *serverUrl)
 }
 
 type webSocketHandler struct {
@@ -112,13 +99,26 @@ type webSocketHandler struct {
 	connections   map[string]*webSocket
 	metrics       *metrics.Metrics
 	listenAddress string
-	url           string
+	serverUrl     string
 }
 
 type webSocket struct {
 	readLock   *sync.Mutex
 	writeLock  *sync.Mutex
 	connection *websocket.Conn
+}
+
+func wsListener(listenAddress string, serverUrl string) {
+	wsh := webSocketHandler{
+		mutex:         &sync.Mutex{},
+		upgrader:      websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }},
+		connections:   map[string]*webSocket{},
+		listenAddress: listenAddress,
+		serverUrl:     serverUrl,
+	}
+	http.Handle("/", wsh)
+	log.Print("Starting server...")
+	log.Fatal(http.ListenAndServe(wsh.listenAddress, nil))
 }
 
 func serve(memprofile, metricsAddress string) {
@@ -198,7 +198,7 @@ func (wsh webSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		client := &http.Client{}
-		responseBytes, err := fetchDataWithRetries(client, wsh.url+address, "")
+		responseBytes, err := fetchDataWithRetries(client, wsh.serverUrl+address, "")
 		if err != nil {
 			log.Printf("error %s when proxying connect", err)
 			return
@@ -225,7 +225,7 @@ func (wsh webSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			//log.Printf("Receive message %s", message)
 			start := time.Now()
-			err = s.handleIncomingMessage(address, client, message, wsh.url)
+			err = s.handleIncomingMessage(address, client, message, wsh.serverUrl)
 			stats.Add("wsproxy_message", "address", address, time.Since(start).Seconds())
 			stats.Inc("wsproxy_message", "event", "finish", 1)
 			if err != nil {

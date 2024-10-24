@@ -70,9 +70,13 @@ func fetchDataWithRetries(c *http.Client, url string, body string) (message stri
 	return
 }
 
+var stats = metrics.New()
+
 func main() {
 	cpuprofile := flag.String("cpuprofile", "", "write cpu profile to file")
 	memprofile := flag.String("memprofile", "", "write mem profile to file")
+	listenAddress := flag.String("listen", ":4000", "address to listen for high frequent events over TCP")
+	binaryAddress := flag.String("binary", ":9999", "address to listen for Gob metric scraper over HTTP")
 	metricsAddress := flag.String("metrics", ":8080", "address to listen for Prometheus metric scraper over HTTP")
 	url := flag.String("url", "http://localhost:5000/", "url of the API server to relay websocket messages to")
 	flag.Parse()
@@ -85,24 +89,30 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 	webSocketHandler := webSocketHandler{
-		mutex:       &sync.Mutex{},
-		upgrader:    websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }},
-		connections: map[string]*webSocket{},
-		metrics:     metrics.New(),
-		url:         *url,
+		mutex:         &sync.Mutex{},
+		upgrader:      websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }},
+		connections:   map[string]*webSocket{},
+		listenAddress: *listenAddress,
+		url:           *url,
 	}
-	go webSocketHandler.serve(*memprofile, *metricsAddress)
+	go serve(*memprofile, *metricsAddress)
+	go serveGob(*binaryAddress)
+	wsListener(webSocketHandler)
+}
+
+func wsListener(webSocketHandler webSocketHandler) {
 	http.Handle("/", webSocketHandler)
 	log.Print("Starting server...")
-	log.Fatal(http.ListenAndServe(":4000", nil))
+	log.Fatal(http.ListenAndServe(webSocketHandler.listenAddress, nil))
 }
 
 type webSocketHandler struct {
-	upgrader    websocket.Upgrader
-	mutex       *sync.Mutex
-	connections map[string]*webSocket
-	metrics     *metrics.Metrics
-	url         string
+	upgrader      websocket.Upgrader
+	mutex         *sync.Mutex
+	connections   map[string]*webSocket
+	metrics       *metrics.Metrics
+	listenAddress string
+	url           string
 }
 
 type webSocket struct {
@@ -111,9 +121,9 @@ type webSocket struct {
 	connection *websocket.Conn
 }
 
-func (wsh webSocketHandler) serve(memprofile, metricsAddress string) {
+func serve(memprofile, metricsAddress string) {
 	err := http.ListenAndServe(metricsAddress, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		wsh.metrics.Write(&writer)
+		stats.Write(&writer)
 		if memprofile != "" {
 			f, err := os.Create(memprofile)
 			if err != nil {
@@ -122,6 +132,13 @@ func (wsh webSocketHandler) serve(memprofile, metricsAddress string) {
 			pprof.WriteHeapProfile(f)
 			f.Close()
 		}
+	}))
+	log.Fatal(err)
+}
+
+func serveGob(metricsAddress string) {
+	err := http.ListenAndServe(metricsAddress, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		stats.WriteGob(&writer)
 	}))
 	log.Fatal(err)
 }
@@ -197,9 +214,9 @@ func (wsh webSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		defer c.Close()
 		s := wsh.storeConnection(c, address)
-		wsh.metrics.Inc("wsproxy_connection", "event", "start", 1)
+		stats.Inc("wsproxy_connection", "event", "start", 1)
 		for {
-			wsh.metrics.Inc("wsproxy_message", "event", "start", 1)
+			stats.Inc("wsproxy_message", "event", "start", 1)
 			// receive message
 			message, err := s.readString()
 			if err != nil {
@@ -209,14 +226,14 @@ func (wsh webSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			//log.Printf("Receive message %s", message)
 			start := time.Now()
 			err = s.handleIncomingMessage(address, client, message, wsh.url)
-			wsh.metrics.Add("wsproxy_message", "address", address, time.Since(start).Seconds())
-			wsh.metrics.Inc("wsproxy_message", "event", "finish", 1)
+			stats.Add("wsproxy_message", "address", address, time.Since(start).Seconds())
+			stats.Inc("wsproxy_message", "event", "finish", 1)
 			if err != nil {
 				log.Printf("error %s", err)
 				break
 			}
 		}
-		wsh.metrics.Inc("wsproxy_connection", "event", "finish", 1)
+		stats.Inc("wsproxy_connection", "event", "finish", 1)
 	}
 }
 

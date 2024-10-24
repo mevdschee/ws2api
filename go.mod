@@ -1,6 +1,8 @@
 module github.com/mevdschee/ws2api
 
-go 1.18
+go 1.22.2
+
+toolchain go1.23.2
 
 require (
 	github.com/avast/retry-go v3.0.0+incompatible

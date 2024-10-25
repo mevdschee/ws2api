@@ -256,10 +256,10 @@ func (s webSocket) writeString(message string) error {
 func (s *webSocket) handleIncomingMessage(address string, client *http.Client, message string, url string) error {
 	// track message
 	if message[0] == '[' && message[1] == '2' {
-		track.Track("wamp", "in", message)
+		track.Track("wamp_in", message)
 	}
 	if message[0] == '[' && message[1] == '3' {
-		track.Track("wamp", "out", message)
+		track.Track("wamp_out", message)
 	}
 	// handle message
 	response, err := fetchDataWithRetries(client, url+address, message)
@@ -273,7 +273,7 @@ func (s *webSocket) handleIncomingMessage(address string, client *http.Client, m
 		}
 		// track message
 		if message[0] == '[' && message[1] == '3' {
-			track.Track("wamp", "in", response)
+			track.Track("wamp_in", response)
 		}
 	}
 	return nil
@@ -282,7 +282,7 @@ func (s *webSocket) handleIncomingMessage(address string, client *http.Client, m
 func (s *webSocket) handleOutgoingMessage(message string) error {
 	// track message
 	if message[0] == '[' && message[1] == '2' {
-		track.Track("wamp", "out", message)
+		track.Track("wamp_out", message)
 	}
 	// handle message
 	return s.writeString(message)

@@ -90,6 +90,7 @@ func main() {
 	}
 	go serve(*memprofile, *metricsAddress)
 	go serveGob(*binaryAddress)
+	log.Printf("listening on %s proxying to %s", *listenAddress, *serverUrl)
 	log.Fatal(http.ListenAndServe(*listenAddress, getWsHandler(*serverUrl)))
 }
 

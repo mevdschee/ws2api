@@ -14,7 +14,8 @@ import (
 // TestConnectAccepted tries to connect with a websocket and checks
 // that a websocket connection is made when "ok" is returned.
 func TestConnectAccepted(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// start api server
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		got := r.Method + " " + r.RequestURI
 		want := "GET /test"
 		if got != want {
@@ -22,10 +23,12 @@ func TestConnectAccepted(t *testing.T) {
 		}
 		w.Write([]byte("ok"))
 	}))
-	defer server.Close()
-	wsServer := httptest.NewServer(getWsHandler(server.URL + "/"))
+	defer apiServer.Close()
+	// start ws server
+	wsServer := httptest.NewServer(getWsHandler(apiServer.URL + "/"))
 	defer wsServer.Close()
 	wsUrl := strings.Replace(wsServer.URL, "http://", "ws://", 1)
+	// connect to ws server
 	wsClient, _, err := websocket.DefaultDialer.Dial(wsUrl+"/test", nil)
 	if wsClient != nil {
 		defer wsClient.Close()
@@ -40,13 +43,16 @@ func TestConnectAccepted(t *testing.T) {
 // TestConnectRejected tries to connect with a websocket and checks
 // that a websocket connection is failing when "ko" is returned.
 func TestConnectRejected(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// start api server
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("ko"))
 	}))
-	defer server.Close()
-	wsServer := httptest.NewServer(getWsHandler(server.URL + "/"))
+	defer apiServer.Close()
+	// start ws server
+	wsServer := httptest.NewServer(getWsHandler(apiServer.URL + "/"))
 	defer wsServer.Close()
 	wsUrl := strings.Replace(wsServer.URL, "http://", "ws://", 1)
+	// connect to ws server
 	wsClient, _, err := websocket.DefaultDialer.Dial(wsUrl+"/test", nil)
 	if wsClient != nil {
 		defer wsClient.Close()
@@ -61,7 +67,8 @@ func TestConnectRejected(t *testing.T) {
 // TestIncomingMessage tries to connect with a websocket and sends
 // and receives a message in text format over that websocket connection
 func TestIncomingMessage(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// start api server
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" {
 			w.Write([]byte("ok"))
 			return
@@ -77,10 +84,12 @@ func TestIncomingMessage(t *testing.T) {
 		}
 		w.Write([]byte("response_message"))
 	}))
-	defer server.Close()
-	wsServer := httptest.NewServer(getWsHandler(server.URL + "/"))
+	defer apiServer.Close()
+	// start ws server
+	wsServer := httptest.NewServer(getWsHandler(apiServer.URL + "/"))
 	defer wsServer.Close()
 	wsUrl := strings.Replace(wsServer.URL, "http://", "ws://", 1)
+	// connect to ws server
 	wsClient, _, err := websocket.DefaultDialer.Dial(wsUrl+"/test", nil)
 	if wsClient != nil {
 		defer wsClient.Close()
@@ -88,7 +97,9 @@ func TestIncomingMessage(t *testing.T) {
 	if err != nil {
 		t.Errorf("error connecting ws client: %s", err.Error())
 	}
+	// send ws message
 	wsClient.WriteMessage(websocket.TextMessage, []byte("request_message"))
+	// receive ws message
 	messageType, messageBytes, err := wsClient.ReadMessage()
 	if err != nil {
 		t.Errorf("error reading from ws client: %s", err.Error())
@@ -103,12 +114,15 @@ func TestIncomingMessage(t *testing.T) {
 // TestOutgoingMessage tries to connect with a websocket and sends
 // and receives a message in text format over that websocket connection
 func TestOutgoingMessage(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// start api server
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("ok"))
 	}))
-	wsServer := httptest.NewServer(getWsHandler(server.URL + "/"))
+	// start ws server
+	wsServer := httptest.NewServer(getWsHandler(apiServer.URL + "/"))
 	defer wsServer.Close()
 	wsUrl := strings.Replace(wsServer.URL, "http://", "ws://", 1)
+	// connect to ws server
 	wsClient, _, err := websocket.DefaultDialer.Dial(wsUrl+"/test", nil)
 	if wsClient != nil {
 		defer wsClient.Close()
@@ -119,6 +133,7 @@ func TestOutgoingMessage(t *testing.T) {
 	// make post request
 	c := &http.Client{}
 	c.Post(wsServer.URL+"/test", "plain/text", strings.NewReader("server_message"))
+	// receive ws message
 	messageType, messageBytes, err := wsClient.ReadMessage()
 	if err != nil {
 		t.Errorf("error reading from ws client: %s", err.Error())

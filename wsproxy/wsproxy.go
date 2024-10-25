@@ -107,13 +107,12 @@ type webSocket struct {
 }
 
 func getWsHandler(serverUrl string) http.Handler {
-	wsh := webSocketHandler{
+	return webSocketHandler{
 		mutex:       &sync.Mutex{},
 		upgrader:    websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }},
 		connections: map[string]*webSocket{},
 		serverUrl:   serverUrl,
 	}
-	return wsh
 }
 
 func serve(memprofile, metricsAddress string) {

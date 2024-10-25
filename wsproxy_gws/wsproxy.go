@@ -171,7 +171,7 @@ func main() {
 
 func (c *Handler) serve(memprofile, metricsAddress string) {
 	err := http.ListenAndServe(metricsAddress, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		c.metrics.Write(&writer)
+		c.metrics.Write(writer)
 		if memprofile != "" {
 			f, err := os.Create(memprofile)
 			if err != nil {
@@ -186,7 +186,7 @@ func (c *Handler) serve(memprofile, metricsAddress string) {
 
 func (c *Handler) serveGob(metricsAddress string) {
 	err := http.ListenAndServe(metricsAddress, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		c.metrics.WriteGob(&writer)
+		c.metrics.WriteGob(writer)
 	}))
 	log.Fatal(err)
 }

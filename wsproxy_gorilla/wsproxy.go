@@ -110,7 +110,7 @@ type webSocketHandler struct {
 
 func (wsh webSocketHandler) serve(memprofile, metricsAddress string) {
 	err := http.ListenAndServe(metricsAddress, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		wsh.metrics.Write(&writer)
+		wsh.metrics.Write(writer)
 		if memprofile != "" {
 			f, err := os.Create(memprofile)
 			if err != nil {

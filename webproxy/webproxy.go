@@ -32,7 +32,7 @@ func (c *Handler) proxyPass(writer http.ResponseWriter, request *http.Request) {
 	parts := strings.SplitN(request.URL.Path, "/", 3)
 	remoteHost := parts[1]
 	if len(remoteHost) == 0 {
-		c.metrics.Write(&writer)
+		c.metrics.Write(writer)
 		if *memprofile != "" {
 			f, err := os.Create(*memprofile)
 			if err != nil {

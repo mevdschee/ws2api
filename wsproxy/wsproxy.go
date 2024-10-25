@@ -90,15 +90,14 @@ func main() {
 	}
 	go serve(*memprofile, *metricsAddress)
 	go serveGob(*binaryAddress)
-	wsListener(*listenAddress, *serverUrl)
+	log.Fatal(http.ListenAndServe(*listenAddress, getWsHandler(*serverUrl)))
 }
 
 type webSocketHandler struct {
-	upgrader      websocket.Upgrader
-	mutex         *sync.Mutex
-	connections   map[string]*webSocket
-	listenAddress string
-	serverUrl     string
+	upgrader    websocket.Upgrader
+	mutex       *sync.Mutex
+	connections map[string]*webSocket
+	serverUrl   string
 }
 
 type webSocket struct {
@@ -107,17 +106,14 @@ type webSocket struct {
 	connection *websocket.Conn
 }
 
-func wsListener(listenAddress string, serverUrl string) {
+func getWsHandler(serverUrl string) http.Handler {
 	wsh := webSocketHandler{
-		mutex:         &sync.Mutex{},
-		upgrader:      websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }},
-		connections:   map[string]*webSocket{},
-		listenAddress: listenAddress,
-		serverUrl:     serverUrl,
+		mutex:       &sync.Mutex{},
+		upgrader:    websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }},
+		connections: map[string]*webSocket{},
+		serverUrl:   serverUrl,
 	}
-	http.Handle("/", wsh)
-	log.Print("Starting server...")
-	log.Fatal(http.ListenAndServe(wsh.listenAddress, nil))
+	return wsh
 }
 
 func serve(memprofile, metricsAddress string) {

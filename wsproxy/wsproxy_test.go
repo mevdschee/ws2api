@@ -1,21 +1,13 @@
 package main
 
 import (
-	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
-	"time"
 
 	"github.com/gorilla/websocket"
 )
-
-func waitForPort(host string, timeout time.Duration) {
-	conn, err := net.DialTimeout("tcp", host, timeout)
-	if err == nil {
-		conn.Close()
-	}
-}
 
 // TestConnect tries to connect with a websocket and checks
 // that a websocket connection is made when "ok" is returned.
@@ -29,11 +21,12 @@ func TestConnect(t *testing.T) {
 		w.Write([]byte("ok"))
 	}))
 	defer server.Close()
-	go wsListener(":4000", server.URL+"/")
-	waitForPort(":4000", 1*time.Second)
-	ws, _, err := websocket.DefaultDialer.Dial("ws://localhost:4000/test", nil)
-	if ws != nil {
-		defer ws.Close()
+	wsServer := httptest.NewServer(getWsHandler(server.URL + "/"))
+	defer wsServer.Close()
+	wsUrl := strings.Replace(wsServer.URL, "http://", "ws://", 1)
+	wsClient, _, err := websocket.DefaultDialer.Dial(wsUrl+"/test", nil)
+	if wsClient != nil {
+		defer wsClient.Close()
 	}
 	got := err
 	want := error(nil)
@@ -49,11 +42,12 @@ func TestCannotConnect(t *testing.T) {
 		w.Write([]byte("ko"))
 	}))
 	defer server.Close()
-	go wsListener(":4000", server.URL+"/")
-	waitForPort(":4000", 1*time.Second)
-	ws, _, err := websocket.DefaultDialer.Dial("ws://localhost:4000/test", nil)
-	if ws != nil {
-		defer ws.Close()
+	wsServer := httptest.NewServer(getWsHandler(server.URL + "/"))
+	defer wsServer.Close()
+	wsUrl := strings.Replace(wsServer.URL, "http://", "ws://", 1)
+	wsClient, _, err := websocket.DefaultDialer.Dial(wsUrl+"/test", nil)
+	if wsClient != nil {
+		defer wsClient.Close()
 	}
 	got := err.Error()
 	want := "websocket: bad handshake"

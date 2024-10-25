@@ -13,7 +13,7 @@ import (
 
 // TestConnect tries to connect with a websocket and checks
 // that a websocket connection is made when "ok" is returned.
-func TestConnect(t *testing.T) {
+func TestCanConnect(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		got := r.Method + " " + r.RequestURI
 		want := "GET /test"

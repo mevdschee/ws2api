@@ -118,7 +118,7 @@ func TestOutgoingMessage(t *testing.T) {
 	}
 	// make post request
 	c := &http.Client{}
-	c.Post(wsServer.URL+"/test", "", strings.NewReader("server_message"))
+	c.Post(wsServer.URL+"/test", "plain/text", strings.NewReader("server_message"))
 	messageType, messageBytes, err := wsClient.ReadMessage()
 	if err != nil {
 		t.Errorf("error reading from ws client: %s", err.Error())

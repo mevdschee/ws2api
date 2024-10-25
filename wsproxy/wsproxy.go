@@ -16,6 +16,7 @@ import (
 	"github.com/avast/retry-go"
 	"github.com/gorilla/websocket"
 	"github.com/mevdschee/php-observability/metrics"
+	"github.com/mevdschee/php-wamp-observer/tracking"
 )
 
 func init() {
@@ -71,6 +72,7 @@ func fetchDataWithRetries(c *http.Client, url string, body string) (message stri
 }
 
 var stats = metrics.New()
+var track = tracking.New(stats)
 
 func main() {
 	cpuprofile := flag.String("cpuprofile", "", "write cpu profile to file")
@@ -211,13 +213,13 @@ func (wsh webSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s := wsh.storeConnection(c, address)
 		stats.Inc("wsproxy_connection", "event", "start", 1)
 		for {
-			stats.Inc("wsproxy_message", "event", "start", 1)
 			// receive message
 			message, err := s.readString()
 			if err != nil {
 				log.Printf("error %s", err)
 				break
 			}
+			stats.Inc("wsproxy_message", "event", "start", 1)
 			//log.Printf("Receive message %s", message)
 			start := time.Now()
 			err = s.handleIncomingMessage(address, client, message, wsh.serverUrl)
@@ -252,21 +254,36 @@ func (s webSocket) writeString(message string) error {
 }
 
 func (s *webSocket) handleIncomingMessage(address string, client *http.Client, message string, url string) error {
+	// track message
+	if message[0] == '[' && message[1] == '2' {
+		track.Track("wamp", "in", message)
+	}
+	if message[0] == '[' && message[1] == '3' {
+		track.Track("wamp", "out", message)
+	}
 	// handle message
-	responseBytes, err := fetchDataWithRetries(client, url+address, message)
+	response, err := fetchDataWithRetries(client, url+address, message)
 	if err != nil {
 		return err
 	}
-	if len(responseBytes) > 0 {
-		err = s.writeString(responseBytes)
+	if len(response) > 0 {
+		err = s.writeString(response)
 		if err != nil {
 			return err
+		}
+		// track message
+		if message[0] == '[' && message[1] == '3' {
+			track.Track("wamp", "in", response)
 		}
 	}
 	return nil
 }
 
 func (s *webSocket) handleOutgoingMessage(message string) error {
+	// track message
+	if message[0] == '[' && message[1] == '2' {
+		track.Track("wamp", "out", message)
+	}
 	// handle message
 	return s.writeString(message)
 }

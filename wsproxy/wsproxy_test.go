@@ -11,9 +11,9 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// TestConnect tries to connect with a websocket and checks
+// TestConnectAccepted tries to connect with a websocket and checks
 // that a websocket connection is made when "ok" is returned.
-func TestCanConnect(t *testing.T) {
+func TestConnectAccepted(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		got := r.Method + " " + r.RequestURI
 		want := "GET /test"
@@ -37,9 +37,9 @@ func TestCanConnect(t *testing.T) {
 	}
 }
 
-// TestCannotConnect tries to connect with a websocket and checks
+// TestConnectRejected tries to connect with a websocket and checks
 // that a websocket connection is failing when "ko" is returned.
-func TestCannotConnect(t *testing.T) {
+func TestConnectRejected(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("ko"))
 	}))
@@ -118,7 +118,7 @@ func TestOutgoingMessage(t *testing.T) {
 	}
 	// make post request
 	c := &http.Client{}
-	c.Post(wsServer.URL+"/test", "plain/text", strings.NewReader("server_message"))
+	c.Post(wsServer.URL+"/test", "", strings.NewReader("server_message"))
 	messageType, messageBytes, err := wsClient.ReadMessage()
 	if err != nil {
 		t.Errorf("error reading from ws client: %s", err.Error())

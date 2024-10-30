@@ -72,7 +72,7 @@ func fetchDataWithRetries(c *http.Client, url string, body string) (message stri
 }
 
 var stats = metrics.New()
-var track = tracking.New(stats)
+var track = tracking.New(stats, 30*time.Second)
 
 func main() {
 	cpuprofile := flag.String("cpuprofile", "", "write cpu profile to file")

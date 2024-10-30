@@ -9,7 +9,7 @@ require (
 	github.com/gofiber/fiber/v2 v2.52.5
 	github.com/gorilla/websocket v1.5.3
 	github.com/lxzan/gws v1.8.8
-	github.com/mevdschee/php-wamp-observer v1.1.0
+	github.com/mevdschee/php-wamp-observer v1.1.1
 )
 
 require (

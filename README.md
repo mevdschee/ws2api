@@ -79,5 +79,5 @@ in 30 seconds (from 0 to 120k connections) and with 12k messages per second with
 
 ### Scaling
 
-You can scale the application by load balancing using haproxy with "uri" load-balancing algorithm (with depth = 1). This will 
-ensure that messages for one `<ClientId>` will always end up on the same server.
+You can scale the application by load balancing using haproxy with "uri" load-balancing algorithm (with depth = 1). 
+This will ensure that messages for one `<ClientId>` will always end up on the same server.

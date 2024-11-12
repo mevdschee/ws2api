@@ -84,4 +84,4 @@ This will ensure that messages for one `<ClientId>` will always end up on the sa
 
     hash $request_uri consistent;
 
-in order to ensure that the `<ClientId>` will always end up on the same server
+in order to ensure that the `<ClientId>` will always end up on the same server.

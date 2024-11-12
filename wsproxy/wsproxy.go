@@ -226,7 +226,7 @@ func (wsh webSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		stats.Inc("wsproxy_message", "event", "start", 1)
 		//log.Printf("Receive message %s", message)
 		start := time.Now()
-		err = s.handleIncomingMessage(address, message, wsh.serverUrl)
+		err = s.handleIncomingMessage(message, wsh.serverUrl, address)
 		stats.Add("wsproxy_message", "address", address, time.Since(start).Seconds())
 		stats.Inc("wsproxy_message", "event", "finish", 1)
 		if err != nil {
@@ -263,7 +263,7 @@ func (s webSocketConnection) writeString(message string) error {
 	return s.connection.WriteMessage(websocket.TextMessage, []byte(message))
 }
 
-func (s webSocketConnection) handleIncomingMessage(address string, message string, url string) error {
+func (s webSocketConnection) handleIncomingMessage(message string, url string, address string) error {
 	// track message
 	if message[0] == '[' && message[1] == '2' {
 		track.Track("wamp_in", message)

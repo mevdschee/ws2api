@@ -77,7 +77,7 @@ The proxy application suppports the standard "-cpuprofile=" and "-memprofile=" f
 The proxy application was benchmarked to build up and hold 120k connections each doing one message per 10 seconds
 in 30 seconds (from 0 to 120k connections) and with 12k messages per second within 32GB RAM.
 
-### Warning
+### Scaling
 
-The roadrunner server application is currently unbound and will use as much RAM as it needs easily using up to 64GB of RAM.
-Also the setup requires many open files, so you may want to set the using "ulimit -n 200000".
+You can scale the application by load balancing using haproxy with "uri" load-balancing algorithm. This will 
+ensure that messages for one `<ClientId>` will always end up on the same server.

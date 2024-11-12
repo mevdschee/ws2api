@@ -155,6 +155,7 @@ func (wsh webSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte(err.Error()))
 			return
 		}
+		w.Write([]byte("ok"))
 		return
 	}
 	if r.Header.Get("Upgrade") != "websocket" {

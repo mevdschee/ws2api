@@ -53,12 +53,37 @@ func TestConnectRejected(t *testing.T) {
 	defer wsServer.Close()
 	wsUrl := strings.Replace(wsServer.URL, "http://", "ws://", 1)
 	// connect to ws server
-	wsClient, _, err := websocket.DefaultDialer.Dial(wsUrl+"/test", nil)
+	wsClient, response, err := websocket.DefaultDialer.Dial(wsUrl+"/test", nil)
 	if wsClient != nil {
 		defer wsClient.Close()
 	}
-	got := err.Error()
-	want := "websocket: bad handshake"
+	got := fmt.Sprintf("%d: %s", response.StatusCode, err.Error())
+	want := "403: websocket: bad handshake"
+	if got != want {
+		t.Errorf("got %q, wanted %q", got, want)
+	}
+}
+
+// TestConnectFailed tries to connect with a websocket and checks
+// that a 502 is returned when the server is not available.
+func TestConnectFailed(t *testing.T) {
+	// start api server
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(500)
+		w.Write([]byte("internal server error"))
+	}))
+	defer apiServer.Close()
+	// start ws server
+	wsServer := httptest.NewServer(getWsHandler(apiServer.URL + "/"))
+	defer wsServer.Close()
+	wsUrl := strings.Replace(wsServer.URL, "http://", "ws://", 1)
+	// connect to ws server
+	wsClient, response, err := websocket.DefaultDialer.Dial(wsUrl+"/test", nil)
+	if wsClient != nil {
+		defer wsClient.Close()
+	}
+	got := fmt.Sprintf("%d: %s", response.StatusCode, err.Error())
+	want := "502: websocket: bad handshake"
 	if got != want {
 		t.Errorf("got %q, wanted %q", got, want)
 	}

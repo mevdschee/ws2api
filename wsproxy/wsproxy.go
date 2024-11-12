@@ -23,6 +23,29 @@ func init() {
 	runtime.GOMAXPROCS(8)
 }
 
+func fetchData(c *http.Client, url string, body string) (string, error) {
+	var r *http.Response
+	var err error
+	if len(body) == 0 {
+		r, err = c.Get(url)
+	} else {
+		r, err = c.Post(url, "plain/text", strings.NewReader(body))
+	}
+	if err != nil {
+		return "", err
+	}
+	defer r.Body.Close()
+	responseBytes, err := io.ReadAll(r.Body)
+	responseString := string(responseBytes)
+	if err != nil {
+		return responseString, err
+	}
+	if r.StatusCode != 200 {
+		return responseString, fmt.Errorf("proxy returned: %s", r.Status)
+	}
+	return responseString, nil
+}
+
 // fetchDataWithRetries is your wrapped retrieval.
 // It works with a static configuration for the retries,
 // but obviously, you can generalize this function further.
@@ -30,24 +53,8 @@ func fetchDataWithRetries(c *http.Client, url string, body string) (message stri
 	retry.Do(
 		// The actual function that does "stuff"
 		func() error {
-			var r *http.Response
-			var err error
-			if len(body) == 0 {
-				r, err = c.Get(url)
-			} else {
-				r, err = c.Post(url, "plain/text", strings.NewReader(body))
-			}
-			if err != nil {
-				return err
-			}
-			defer r.Body.Close()
-			var responseBytes []byte
-			responseBytes, err = io.ReadAll(r.Body)
-			if err != nil {
-				return err
-			}
-			message = string(responseBytes)
-			return nil
+			message, err = fetchData(c, url, body)
+			return err
 		},
 		// A function to decide whether you actually want to
 		// retry or not. In this case, it would make sense
@@ -61,6 +68,7 @@ func fetchDataWithRetries(c *http.Client, url string, body string) (message stri
 			}),
 		retry.OnRetry(func(try uint, orig error) {
 			log.Printf("Retrying to fetch data. Try: %d", try+2)
+
 		}),
 		retry.Attempts(3),
 		// Basically, we are setting up a delay
@@ -188,18 +196,20 @@ func (wsh webSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	client := &http.Client{}
-	responseBytes, err := fetchDataWithRetries(client, wsh.serverUrl+address, "")
+	responseBytes, err := fetchData(client, wsh.serverUrl+address, "")
 	if err != nil {
-		log.Printf("error %s when proxying connect", err)
+		w.WriteHeader(502)
+		w.Write([]byte("error when proxying connect"))
 		return
 	}
 	if responseBytes != "ok" {
-		log.Printf("not allowed to connect: %s", responseBytes)
+		w.WriteHeader(403)
+		w.Write([]byte("not allowed to connect"))
 		return
 	}
 	c, err := wsh.upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Printf("error %s when upgrading connection to websocket", err)
+		log.Printf("error when upgrading connection to websocket: %s", err)
 		return
 	}
 	defer c.Close()

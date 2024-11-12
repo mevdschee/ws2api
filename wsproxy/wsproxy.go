@@ -188,7 +188,7 @@ func (wsh webSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	if r.Header.Get("Upgrade") == "" {
+	if r.Header.Get("Upgrade") != "websocket" {
 		w.WriteHeader(500)
 		w.Write([]byte("no upgrade requested"))
 		return

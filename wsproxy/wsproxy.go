@@ -97,10 +97,10 @@ func main() {
 }
 
 type webSocketHandler struct {
-	upgrader    websocket.Upgrader
-	mutex       *sync.Mutex
-	connections map[string]*webSocket
-	serverUrl   string
+	upgrader  websocket.Upgrader
+	mutex     *sync.Mutex
+	sockets   map[string]*webSocket
+	serverUrl string
 }
 
 type webSocket struct {
@@ -111,10 +111,10 @@ type webSocket struct {
 
 func getWsHandler(serverUrl string) http.Handler {
 	return webSocketHandler{
-		mutex:       &sync.Mutex{},
-		upgrader:    websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }},
-		connections: map[string]*webSocket{},
-		serverUrl:   serverUrl,
+		mutex:     &sync.Mutex{},
+		upgrader:  websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }},
+		sockets:   map[string]*webSocket{},
+		serverUrl: serverUrl,
 	}
 }
 
@@ -148,14 +148,14 @@ func (wsh webSocketHandler) storeConnection(c *websocket.Conn, address string) *
 		writeLock:  &sync.Mutex{},
 		connection: c,
 	}
-	wsh.connections[address] = s
+	wsh.sockets[address] = s
 	return s
 }
 
 func (wsh webSocketHandler) retrieveConnection(address string) *webSocket {
 	wsh.mutex.Lock()
 	defer wsh.mutex.Unlock()
-	return wsh.connections[address]
+	return wsh.sockets[address]
 }
 
 func (wsh webSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {

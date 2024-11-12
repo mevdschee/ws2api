@@ -142,7 +142,7 @@ type webSocketHandler struct {
 	serverUrl string
 }
 
-func (wsh webSocketHandler) storeConnection(c *websocket.Conn, address string) *webSocketConnection {
+func (wsh webSocketHandler) storeConnection(address string, c *websocket.Conn) *webSocketConnection {
 	wsh.mutex.Lock()
 	defer wsh.mutex.Unlock()
 	s := &webSocketConnection{
@@ -213,7 +213,7 @@ func (wsh webSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer c.Close()
-	s := wsh.storeConnection(c, address)
+	s := wsh.storeConnection(address, c)
 	stats.Inc("wsproxy_connection", "event", "start", 1)
 	for {
 		// receive message

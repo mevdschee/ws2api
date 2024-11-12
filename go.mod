@@ -5,7 +5,6 @@ go 1.22.2
 toolchain go1.23.2
 
 require (
-	github.com/avast/retry-go v3.0.0+incompatible
 	github.com/gofiber/fiber/v2 v2.52.5
 	github.com/gorilla/websocket v1.5.3
 	github.com/lxzan/gws v1.8.8

@@ -13,7 +13,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/avast/retry-go"
 	"github.com/gorilla/websocket"
 	"github.com/mevdschee/php-observability/metrics"
 	"github.com/mevdschee/php-wamp-observer/tracking"
@@ -44,39 +43,6 @@ func fetchData(c *http.Client, url string, body string) (string, error) {
 		return responseString, fmt.Errorf("proxy returned: %s", r.Status)
 	}
 	return responseString, nil
-}
-
-// fetchDataWithRetries is your wrapped retrieval.
-// It works with a static configuration for the retries,
-// but obviously, you can generalize this function further.
-func fetchDataWithRetries(c *http.Client, url string, body string) (message string, err error) {
-	retry.Do(
-		// The actual function that does "stuff"
-		func() error {
-			message, err = fetchData(c, url, body)
-			return err
-		},
-		// A function to decide whether you actually want to
-		// retry or not. In this case, it would make sense
-		// to actually stop retrying, since the host does not exist.
-		// Return true if you want to retry, false if not.
-		retry.RetryIf(
-			func(error) bool {
-				log.Printf("Retrieving data: %s", err)
-				log.Printf("Deciding whether to retry")
-				return true
-			}),
-		retry.OnRetry(func(try uint, orig error) {
-			log.Printf("Retrying to fetch data. Try: %d", try+2)
-
-		}),
-		retry.Attempts(3),
-		// Basically, we are setting up a delay
-		// which randoms between 2 and 4 seconds.
-		retry.Delay(3*time.Second),
-		retry.MaxJitter(1*time.Second),
-	)
-	return
 }
 
 var stats = metrics.New()
@@ -272,7 +238,7 @@ func (s webSocketConnection) handleIncomingMessage(message string, url string, a
 		track.Track("wamp_out", message)
 	}
 	// handle message
-	response, err := fetchDataWithRetries(s.client, url+address, message)
+	response, err := fetchData(s.client, url+address, message)
 	if err != nil {
 		return err
 	}

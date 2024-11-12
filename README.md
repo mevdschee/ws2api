@@ -80,4 +80,8 @@ in 30 seconds (from 0 to 120k connections) and with 12k messages per second with
 ### Scaling
 
 You can scale the application by load balancing using HAproxy with "uri" load-balancing algorithm (with depth = 1). 
-This will ensure that messages for one `<ClientId>` will always end up on the same server.
+This will ensure that messages for one `<ClientId>` will always end up on the same server. On Nginx you need to use:
+
+    hash $request_uri consistent;
+
+in order to ensure that the `<ClientId>` will always end up on the same server

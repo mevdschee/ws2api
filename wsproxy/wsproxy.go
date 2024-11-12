@@ -142,13 +142,14 @@ type webSocketHandler struct {
 	serverUrl string
 }
 
-func (wsh webSocketHandler) storeConnection(address string, c *websocket.Conn) *webSocketConnection {
+func (wsh webSocketHandler) storeConnection(address string, connection *websocket.Conn, client *http.Client) *webSocketConnection {
 	wsh.mutex.Lock()
 	defer wsh.mutex.Unlock()
 	s := &webSocketConnection{
 		readLock:   &sync.Mutex{},
 		writeLock:  &sync.Mutex{},
-		connection: c,
+		connection: connection,
+		client:     client,
 	}
 	wsh.sockets[address] = s
 	return s
@@ -213,7 +214,7 @@ func (wsh webSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer c.Close()
-	s := wsh.storeConnection(address, c)
+	s := wsh.storeConnection(address, c, client)
 	stats.Inc("wsproxy_connection", "event", "start", 1)
 	for {
 		// receive message
@@ -225,7 +226,7 @@ func (wsh webSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		stats.Inc("wsproxy_message", "event", "start", 1)
 		//log.Printf("Receive message %s", message)
 		start := time.Now()
-		err = s.handleIncomingMessage(address, client, message, wsh.serverUrl)
+		err = s.handleIncomingMessage(address, message, wsh.serverUrl)
 		stats.Add("wsproxy_message", "address", address, time.Since(start).Seconds())
 		stats.Inc("wsproxy_message", "event", "finish", 1)
 		if err != nil {
@@ -240,6 +241,7 @@ type webSocketConnection struct {
 	readLock   *sync.Mutex
 	writeLock  *sync.Mutex
 	connection *websocket.Conn
+	client     *http.Client
 }
 
 func (s webSocketConnection) readString() (string, error) {
@@ -261,7 +263,7 @@ func (s webSocketConnection) writeString(message string) error {
 	return s.connection.WriteMessage(websocket.TextMessage, []byte(message))
 }
 
-func (s webSocketConnection) handleIncomingMessage(address string, client *http.Client, message string, url string) error {
+func (s webSocketConnection) handleIncomingMessage(address string, message string, url string) error {
 	// track message
 	if message[0] == '[' && message[1] == '2' {
 		track.Track("wamp_in", message)
@@ -270,7 +272,7 @@ func (s webSocketConnection) handleIncomingMessage(address string, client *http.
 		track.Track("wamp_out", message)
 	}
 	// handle message
-	response, err := fetchDataWithRetries(client, url+address, message)
+	response, err := fetchDataWithRetries(s.client, url+address, message)
 	if err != nil {
 		return err
 	}

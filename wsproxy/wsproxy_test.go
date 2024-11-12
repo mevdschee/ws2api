@@ -30,7 +30,6 @@ func TestConnectAccepted(t *testing.T) {
 	wsUrl := strings.Replace(wsServer.URL, "http://", "ws://", 1)
 	// connect to ws server
 	wsClient, response, err := websocket.DefaultDialer.Dial(wsUrl+"/test", nil)
-	wsClient.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(1000, "woops"))
 	if wsClient != nil {
 		defer wsClient.Close()
 	}

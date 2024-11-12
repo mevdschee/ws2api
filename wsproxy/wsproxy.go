@@ -96,24 +96,11 @@ func main() {
 	log.Fatal(http.ListenAndServe(*listenAddress, getWsHandler(*serverUrl)))
 }
 
-type webSocketHandler struct {
-	upgrader  websocket.Upgrader
-	mutex     *sync.Mutex
-	sockets   map[string]*webSocket
-	serverUrl string
-}
-
-type webSocket struct {
-	readLock   *sync.Mutex
-	writeLock  *sync.Mutex
-	connection *websocket.Conn
-}
-
 func getWsHandler(serverUrl string) http.Handler {
 	return webSocketHandler{
 		mutex:     &sync.Mutex{},
 		upgrader:  websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }},
-		sockets:   map[string]*webSocket{},
+		sockets:   map[string]*webSocketConnection{},
 		serverUrl: serverUrl,
 	}
 }
@@ -140,10 +127,17 @@ func serveGob(metricsAddress string) {
 	log.Fatal(err)
 }
 
-func (wsh webSocketHandler) storeConnection(c *websocket.Conn, address string) *webSocket {
+type webSocketHandler struct {
+	upgrader  websocket.Upgrader
+	mutex     *sync.Mutex
+	sockets   map[string]*webSocketConnection
+	serverUrl string
+}
+
+func (wsh webSocketHandler) storeConnection(c *websocket.Conn, address string) *webSocketConnection {
 	wsh.mutex.Lock()
 	defer wsh.mutex.Unlock()
-	s := &webSocket{
+	s := &webSocketConnection{
 		readLock:   &sync.Mutex{},
 		writeLock:  &sync.Mutex{},
 		connection: c,
@@ -152,7 +146,7 @@ func (wsh webSocketHandler) storeConnection(c *websocket.Conn, address string) *
 	return s
 }
 
-func (wsh webSocketHandler) retrieveConnection(address string) *webSocket {
+func (wsh webSocketHandler) retrieveConnection(address string) *webSocketConnection {
 	wsh.mutex.Lock()
 	defer wsh.mutex.Unlock()
 	return wsh.sockets[address]
@@ -232,7 +226,13 @@ func (wsh webSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	stats.Inc("wsproxy_connection", "event", "finish", 1)
 }
 
-func (s webSocket) readString() (string, error) {
+type webSocketConnection struct {
+	readLock   *sync.Mutex
+	writeLock  *sync.Mutex
+	connection *websocket.Conn
+}
+
+func (s webSocketConnection) readString() (string, error) {
 	s.readLock.Lock()
 	defer s.readLock.Unlock()
 	mt, msg, err := s.connection.ReadMessage()
@@ -245,13 +245,13 @@ func (s webSocket) readString() (string, error) {
 	return string(msg), nil
 }
 
-func (s webSocket) writeString(message string) error {
+func (s webSocketConnection) writeString(message string) error {
 	s.writeLock.Lock()
 	defer s.writeLock.Unlock()
 	return s.connection.WriteMessage(websocket.TextMessage, []byte(message))
 }
 
-func (s *webSocket) handleIncomingMessage(address string, client *http.Client, message string, url string) error {
+func (s webSocketConnection) handleIncomingMessage(address string, client *http.Client, message string, url string) error {
 	// track message
 	if message[0] == '[' && message[1] == '2' {
 		track.Track("wamp_in", message)
@@ -277,7 +277,7 @@ func (s *webSocket) handleIncomingMessage(address string, client *http.Client, m
 	return nil
 }
 
-func (s *webSocket) handleOutgoingMessage(message string) error {
+func (s webSocketConnection) handleOutgoingMessage(message string) error {
 	// track message
 	if message[0] == '[' && message[1] == '2' {
 		track.Track("wamp_out", message)

@@ -16,8 +16,8 @@ func main() {
 	var wg sync.WaitGroup
 	wg.Add(n)
 	for i := 0; i < n; i++ {
-		if i%1000 == 0 {
-			log.Println(i)
+		if (i+1)%1000 == 0 {
+			log.Println(i + 1)
 		}
 		c := new(WebSocket)
 		socket, _, err := gws.NewClient(c, &gws.ClientOption{

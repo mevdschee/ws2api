@@ -186,7 +186,9 @@ func (wsh webSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// receive message
 		message, err := s.readString()
 		if err != nil {
-			log.Printf("error %s", err)
+			if strings.Split(err.Error(), ": ")[1] != "close 1000 (normal)" {
+				log.Println(err)
+			}
 			break
 		}
 		stats.Inc("wsproxy_message", "event", "start", 1)

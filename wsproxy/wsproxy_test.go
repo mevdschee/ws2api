@@ -34,11 +34,12 @@ func TestConnectAccepted(t *testing.T) {
 		defer wsClient.Close()
 	}
 	if err != nil {
-		got := err.Error()
-		want := ""
-		if got != want {
-			t.Errorf("got %q, wanted %q", got, want)
-		}
+		t.Errorf("error connecting ws client: %s", err.Error())
+	}
+	// close ws connection
+	err = wsClient.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(1000, "done"))
+	if err != nil {
+		t.Errorf("error closing ws from client: %s", err.Error())
 	}
 	got := fmt.Sprintf("%d", response.StatusCode)
 	want := "101"
@@ -136,6 +137,11 @@ func TestIncomingMessage(t *testing.T) {
 	if err != nil {
 		t.Errorf("error reading from ws client: %s", err.Error())
 	}
+	// close ws connection
+	err = wsClient.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(1000, "done"))
+	if err != nil {
+		t.Errorf("error closing ws from client: %s", err.Error())
+	}
 	got := fmt.Sprintf("%d %s", messageType, string(messageBytes))
 	want := "1 response_message" // 1 = text message
 	if got != want {
@@ -169,6 +175,11 @@ func TestOutgoingMessage(t *testing.T) {
 	messageType, messageBytes, err := wsClient.ReadMessage()
 	if err != nil {
 		t.Errorf("error reading from ws client: %s", err.Error())
+	}
+	// close ws connection
+	err = wsClient.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(1000, ""))
+	if err != nil {
+		t.Errorf("error closing ws from client: %s", err.Error())
 	}
 	got := fmt.Sprintf("%d %s", messageType, string(messageBytes))
 	want := "1 server_message" // 1 = text message

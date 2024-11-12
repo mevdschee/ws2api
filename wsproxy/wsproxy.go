@@ -159,15 +159,13 @@ func (wsh webSocketHandler) retrieveConnection(address string) *webSocket {
 }
 
 func (wsh webSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	parts := strings.Split(r.URL.Path, "/")
-	address := parts[1]
-	if len(parts) != 2 || len(address) == 0 {
+	address := strings.Split(r.URL.Path, "/")[1]
+	if len(address) == 0 {
 		w.WriteHeader(400)
 		w.Write([]byte("invalid url, use /address"))
 		return
 	}
-	switch r.Method {
-	case http.MethodPost: // post
+	if r.Method == http.MethodPost {
 		s := wsh.retrieveConnection(address)
 		if s == nil {
 			w.WriteHeader(404)
@@ -188,50 +186,50 @@ func (wsh webSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte(err.Error()))
 			return
 		}
-	default: // get
-		if r.Header.Get("Upgrade") == "" {
-			w.WriteHeader(500)
-			w.Write([]byte("no upgrade requested"))
-			return
-		}
-		client := &http.Client{}
-		responseBytes, err := fetchDataWithRetries(client, wsh.serverUrl+address, "")
-		if err != nil {
-			log.Printf("error %s when proxying connect", err)
-			return
-		}
-		if responseBytes != "ok" {
-			log.Printf("not allowed to connect: %s", responseBytes)
-			return
-		}
-		c, err := wsh.upgrader.Upgrade(w, r, nil)
-		if err != nil {
-			log.Printf("error %s when upgrading connection to websocket", err)
-			return
-		}
-		defer c.Close()
-		s := wsh.storeConnection(c, address)
-		stats.Inc("wsproxy_connection", "event", "start", 1)
-		for {
-			// receive message
-			message, err := s.readString()
-			if err != nil {
-				log.Printf("error %s", err)
-				break
-			}
-			stats.Inc("wsproxy_message", "event", "start", 1)
-			//log.Printf("Receive message %s", message)
-			start := time.Now()
-			err = s.handleIncomingMessage(address, client, message, wsh.serverUrl)
-			stats.Add("wsproxy_message", "address", address, time.Since(start).Seconds())
-			stats.Inc("wsproxy_message", "event", "finish", 1)
-			if err != nil {
-				log.Printf("error %s", err)
-				break
-			}
-		}
-		stats.Inc("wsproxy_connection", "event", "finish", 1)
+		return
 	}
+	if r.Header.Get("Upgrade") == "" {
+		w.WriteHeader(500)
+		w.Write([]byte("no upgrade requested"))
+		return
+	}
+	client := &http.Client{}
+	responseBytes, err := fetchDataWithRetries(client, wsh.serverUrl+address, "")
+	if err != nil {
+		log.Printf("error %s when proxying connect", err)
+		return
+	}
+	if responseBytes != "ok" {
+		log.Printf("not allowed to connect: %s", responseBytes)
+		return
+	}
+	c, err := wsh.upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("error %s when upgrading connection to websocket", err)
+		return
+	}
+	defer c.Close()
+	s := wsh.storeConnection(c, address)
+	stats.Inc("wsproxy_connection", "event", "start", 1)
+	for {
+		// receive message
+		message, err := s.readString()
+		if err != nil {
+			log.Printf("error %s", err)
+			break
+		}
+		stats.Inc("wsproxy_message", "event", "start", 1)
+		//log.Printf("Receive message %s", message)
+		start := time.Now()
+		err = s.handleIncomingMessage(address, client, message, wsh.serverUrl)
+		stats.Add("wsproxy_message", "address", address, time.Since(start).Seconds())
+		stats.Inc("wsproxy_message", "event", "finish", 1)
+		if err != nil {
+			log.Printf("error %s", err)
+			break
+		}
+	}
+	stats.Inc("wsproxy_connection", "event", "finish", 1)
 }
 
 func (s webSocket) readString() (string, error) {

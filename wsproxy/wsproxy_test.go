@@ -29,12 +29,20 @@ func TestConnectAccepted(t *testing.T) {
 	defer wsServer.Close()
 	wsUrl := strings.Replace(wsServer.URL, "http://", "ws://", 1)
 	// connect to ws server
-	wsClient, _, err := websocket.DefaultDialer.Dial(wsUrl+"/test", nil)
+	wsClient, response, err := websocket.DefaultDialer.Dial(wsUrl+"/test", nil)
+	wsClient.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(1000, "woops"))
 	if wsClient != nil {
 		defer wsClient.Close()
 	}
-	got := err
-	want := error(nil)
+	if err != nil {
+		got := err.Error()
+		want := ""
+		if got != want {
+			t.Errorf("got %q, wanted %q", got, want)
+		}
+	}
+	got := fmt.Sprintf("%d", response.StatusCode)
+	want := "101"
 	if got != want {
 		t.Errorf("got %q, wanted %q", got, want)
 	}

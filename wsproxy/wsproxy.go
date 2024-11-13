@@ -22,7 +22,11 @@ func init() {
 	runtime.GOMAXPROCS(8)
 }
 
-func fetchData(c *http.Client, url string, body string) (string, error) {
+func fetchData(c *http.Client, url string, body string, clientLock *sync.Mutex) (string, error) {
+	if clientLock != nil {
+		clientLock.Lock()
+		defer clientLock.Unlock()
+	}
 	var r *http.Response
 	var err error
 	if len(body) == 0 {
@@ -114,6 +118,7 @@ func (wsh webSocketHandler) storeConnection(address string, connection *websocke
 	s := &webSocketConnection{
 		readLock:   &sync.Mutex{},
 		writeLock:  &sync.Mutex{},
+		clientLock: &sync.Mutex{},
 		connection: connection,
 		client:     client,
 	}
@@ -164,7 +169,7 @@ func (wsh webSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	client := &http.Client{}
-	responseBytes, err := fetchData(client, wsh.serverUrl+address, "")
+	responseBytes, err := fetchData(client, wsh.serverUrl+address, "", nil)
 	if err != nil {
 		w.WriteHeader(502)
 		w.Write([]byte("error when proxying connect"))
@@ -209,6 +214,7 @@ func (wsh webSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 type webSocketConnection struct {
 	readLock   *sync.Mutex
 	writeLock  *sync.Mutex
+	clientLock *sync.Mutex
 	connection *websocket.Conn
 	client     *http.Client
 }
@@ -241,7 +247,7 @@ func (s webSocketConnection) handleIncomingMessage(message string, url string, a
 		track.Track("wamp_out", message)
 	}
 	// handle message
-	response, err := fetchData(s.client, url+address, message)
+	response, err := fetchData(s.client, url+address, message, s.clientLock)
 	if err != nil {
 		return err
 	}

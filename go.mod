@@ -8,13 +8,10 @@ require (
 	github.com/gofiber/fiber/v2 v2.52.5
 	github.com/gorilla/websocket v1.5.3
 	github.com/lxzan/gws v1.8.8
-	github.com/mevdschee/php-observability v1.2.1
-	github.com/mevdschee/php-wamp-observer v1.1.2
 )
 
 require (
 	github.com/andybalholm/brotli v1.1.1 // indirect
-	github.com/avast/retry-go v3.0.0+incompatible
 	github.com/dolthub/maphash v0.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/klauspost/compress v1.17.11 // indirect

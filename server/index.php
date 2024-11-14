@@ -6,11 +6,11 @@
 // }
 //
 // to test out of order
-//if (explode(':', $_GET['addr'])[1] % 4 == 0) usleep(random_int(0, 100) * 10000);
 $address = explode('/', $_SERVER['PATH_INFO'])[1];
 if ($_SERVER['REQUEST_METHOD'] == 'GET') {
     echo "ok";
 } else {
+    //if (explode(':', $_GET['addr'])[1] % 4 == 0) usleep(random_int(0, 100) * 10000);
     echo json_encode(sprintf("I got '%s' via '%s' from '%s'", $HTTP_RAW_POST_DATA, $_SERVER['REMOTE_ADDR'] . ':4000', $address));
     // test remote initiated message
     if (random_int(0, 100) == 0) {

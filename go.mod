@@ -14,6 +14,7 @@ require (
 
 require (
 	github.com/andybalholm/brotli v1.1.1 // indirect
+	github.com/avast/retry-go v3.0.0+incompatible
 	github.com/dolthub/maphash v0.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/klauspost/compress v1.17.11 // indirect

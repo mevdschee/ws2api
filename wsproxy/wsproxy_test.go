@@ -65,7 +65,11 @@ func TestConnectRejected(t *testing.T) {
 	if wsClient != nil {
 		defer wsClient.Close()
 	}
-	got := fmt.Sprintf("%d: %s", response.StatusCode, err.Error())
+	errorMessage := ""
+	if err != nil {
+		errorMessage = err.Error()
+	}
+	got := fmt.Sprintf("%d: %s", response.StatusCode, errorMessage)
 	want := "403: websocket: bad handshake"
 	if got != want {
 		t.Errorf("got %q, wanted %q", got, want)
@@ -90,7 +94,11 @@ func TestConnectFailed(t *testing.T) {
 	if wsClient != nil {
 		defer wsClient.Close()
 	}
-	got := fmt.Sprintf("%d: %s", response.StatusCode, err.Error())
+	errorMessage := ""
+	if err != nil {
+		errorMessage = err.Error()
+	}
+	got := fmt.Sprintf("%d: %s", response.StatusCode, errorMessage)
 	want := "502: websocket: bad handshake"
 	if got != want {
 		t.Errorf("got %q, wanted %q", got, want)

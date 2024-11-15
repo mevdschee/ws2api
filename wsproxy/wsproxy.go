@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/lxzan/gws"
 )
@@ -19,6 +21,11 @@ import (
 func init() {
 	runtime.GOMAXPROCS(8)
 }
+
+var (
+	qps   uint64 = 0
+	total uint64 = 0
+)
 
 func fetchData(c *http.Client, url string, body string) (string, error) {
 	var r *http.Response
@@ -59,6 +66,7 @@ func main() {
 	}
 	log.Println("Proxy running on: http://localhost:4000/")
 	log.Panic(http.ListenAndServe(":4000", getWsHandler("http://localhost:5000/")))
+
 }
 
 func getWsHandler(serverUrl string) http.Handler {
@@ -77,6 +85,16 @@ func getWsHandler(serverUrl string) http.Handler {
 	}
 	handler.upgrader = gws.NewUpgrader(&handler, &serverOptions)
 	return handler
+}
+
+func printStatistics() {
+	ticker := time.NewTicker(time.Second)
+	for i := 1; true; i++ {
+		<-ticker.C
+		n := atomic.SwapUint64(&qps, 0)
+		total += n
+		fmt.Printf("running for %v seconds, NumGoroutine: %v, qps: %v, total: %v\n", i, runtime.NumGoroutine(), n, total)
+	}
 }
 
 type Statistics struct {
@@ -177,6 +195,7 @@ func (c Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 
 func (c Handler) OnMessage(connection *gws.Conn, message *gws.Message) {
 	defer message.Close()
+	atomic.AddUint64(&qps, 1)
 	if message.Opcode == gws.OpcodeBinary {
 		log.Println("binary messages not supported")
 		return

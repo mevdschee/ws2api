@@ -24,7 +24,7 @@ func init() {
 
 var (
 	qps   uint64 = 0
-	total uint64 = 0
+	conns uint64 = 0
 )
 
 func fetchData(c *http.Client, url string, body string) (string, error) {
@@ -64,9 +64,9 @@ func main() {
 		pprof.StartCPUProfile(f)
 		defer pprof.StopCPUProfile()
 	}
+	go printStatistics()
 	log.Println("Proxy running on: http://localhost:4000/")
 	log.Panic(http.ListenAndServe(":4000", getWsHandler("http://localhost:5000/")))
-
 }
 
 func getWsHandler(serverUrl string) http.Handler {
@@ -88,12 +88,14 @@ func getWsHandler(serverUrl string) http.Handler {
 }
 
 func printStatistics() {
+	total := uint64(0)
 	ticker := time.NewTicker(time.Second)
+	fmt.Printf("seconds,connections,qps,total\n")
 	for i := 1; true; i++ {
 		<-ticker.C
 		n := atomic.SwapUint64(&qps, 0)
 		total += n
-		fmt.Printf("running for %v seconds, NumGoroutine: %v, qps: %v, total: %v\n", i, runtime.NumGoroutine(), n, total)
+		fmt.Printf("%v,%v,%v,%v\n", i, atomic.LoadUint64(&conns), n, total)
 	}
 }
 
@@ -168,16 +170,19 @@ func (c Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	if err != nil {
 		writer.WriteHeader(502)
 		writer.Write([]byte("error when proxying connect"))
+		fmt.Println("error when proxying connect")
 		return
 	}
 	if responseBytes != "ok" {
 		writer.WriteHeader(403)
 		writer.Write([]byte("not allowed to connect"))
+		fmt.Println("not allowed to connect")
 		return
 	}
-	if request.Header.Get("Upgrade") != "webconnection" {
+	if request.Header.Get("Upgrade") != "websocket" {
 		writer.WriteHeader(400)
 		writer.Write([]byte("no upgrade requested"))
+		fmt.Println("no upgrade requested")
 		return
 	}
 	connection, err := c.upgrader.Upgrade(writer, request)
@@ -185,6 +190,7 @@ func (c Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		fmt.Println("could not upgrade connection")
 		return
 	}
+	atomic.AddUint64(&conns, 1)
 	statistics.increment("addresses")
 	c.connections.Store(address, connection)
 	c.addresses.Store(connection, address)

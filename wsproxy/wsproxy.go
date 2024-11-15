@@ -177,6 +177,10 @@ func (c Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 
 func (c Handler) OnMessage(connection *gws.Conn, message *gws.Message) {
 	defer message.Close()
+	if message.Opcode == gws.OpcodeBinary {
+		log.Println("binary messages not supported")
+		return
+	}
 	if message.Opcode == gws.OpcodePing {
 		err := connection.WritePong(message.Bytes())
 		if err != nil {
@@ -184,21 +188,24 @@ func (c Handler) OnMessage(connection *gws.Conn, message *gws.Message) {
 		}
 		return
 	}
-	msg := message.Data.String()
-	address, ok := c.addresses.Load(connection)
-	if !ok {
-		fmt.Println("could not find address")
-	}
-	client := &http.Client{}
-	statistics.increment("request_count")
-	statistics.increment("curl_count")
-	responseBytes, err := fetchData(client, c.serverUrl+address, msg)
-	if err != nil {
-		fmt.Println(err.Error())
-	}
-	statistics.decrement("curl_count")
-	err = connection.WriteString(string(responseBytes))
-	if err != nil {
-		log.Println(err.Error())
+	if message.Opcode == gws.OpcodeText {
+		msg := message.Data.String()
+		address, ok := c.addresses.Load(connection)
+		if !ok {
+			fmt.Println("could not find address")
+		}
+		client := &http.Client{}
+		statistics.increment("request_count")
+		statistics.increment("curl_count")
+		responseBytes, err := fetchData(client, c.serverUrl+address, msg)
+		if err != nil {
+			fmt.Println(err.Error())
+		}
+		statistics.decrement("curl_count")
+		err = connection.WriteString(string(responseBytes))
+		if err != nil {
+			log.Println(err.Error())
+		}
+		return
 	}
 }

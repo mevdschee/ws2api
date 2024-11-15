@@ -1,6 +1,6 @@
 # WS to API
 
-Proxy messages from Websockets to a RoadRunner PHP API serve r (see [blog post](https://tqdev.com/2024-scaling-to-1-million-websockets)).
+Proxy messages from Websockets to a RoadRunner PHP API server (see [blog post](https://tqdev.com/2024-scaling-to-1-million-websockets)).
 
     WS client --[ws upgrade]--> WS server --[http get request]--> API server
 

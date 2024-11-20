@@ -1,4 +1,4 @@
-seconds,connections,qps,total
+seconds,connections,rps,total
 1,0,0,0
 2,4178,4177,4177
 3,9257,5080,9257

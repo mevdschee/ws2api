@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/lxzan/gws"
@@ -54,6 +55,19 @@ var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
 var memprofile = flag.String("memprofile", "", "write mem profile to file")
 var statistics = Statistics{counters: map[string]uint64{}}
 
+func increaseNumberOfOpenFiles() {
+	if runtime.GOOS == "linux" {
+		var rLimit syscall.Rlimit
+		if err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit); err != nil {
+			log.Fatalf("failed to get rlimit: %v", err)
+		}
+		rLimit.Cur = rLimit.Max
+		if err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &rLimit); err != nil {
+			log.Fatalf("failed to set rlimit: %v", err)
+		}
+	}
+}
+
 func main() {
 	flag.Parse()
 	if *cpuprofile != "" {
@@ -64,6 +78,7 @@ func main() {
 		pprof.StartCPUProfile(f)
 		defer pprof.StopCPUProfile()
 	}
+	increaseNumberOfOpenFiles()
 	go printStatistics()
 	log.Println("Proxy running on: http://localhost:4000/")
 	log.Panic(http.ListenAndServe(":4000", getWsHandler("http://localhost:5000/")))

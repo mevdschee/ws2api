@@ -56,15 +56,13 @@ var memprofile = flag.String("memprofile", "", "write mem profile to file")
 var statistics = Statistics{counters: map[string]uint64{}}
 
 func increaseNumberOfOpenFiles() {
-	if runtime.GOOS == "linux" {
-		var rLimit syscall.Rlimit
-		if err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit); err != nil {
-			log.Fatalf("failed to get rlimit: %v", err)
-		}
-		rLimit.Cur = rLimit.Max
-		if err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &rLimit); err != nil {
-			log.Fatalf("failed to set rlimit: %v", err)
-		}
+	var rLimit syscall.Rlimit
+	if err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit); err != nil {
+		log.Fatalf("failed to get rlimit: %v", err)
+	}
+	rLimit.Cur = rLimit.Max
+	if err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &rLimit); err != nil {
+		log.Fatalf("failed to set rlimit: %v", err)
 	}
 }
 

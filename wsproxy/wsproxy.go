@@ -61,6 +61,7 @@ func increaseNumberOfOpenFiles() {
 		log.Fatalf("failed to get rlimit: %v", err)
 	}
 	rLimit.Cur = rLimit.Max
+	log.Fatalf("rlimit current: %v", rLimit.Cur)
 	if err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &rLimit); err != nil {
 		log.Fatalf("failed to set rlimit: %v", err)
 	}

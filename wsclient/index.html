@@ -3,7 +3,7 @@
 
 <body>
     <script>
-        const ws = new WebSocket('ws://localhost:4000/connect')
+        const ws = new WebSocket('ws://localhost:7001/connect')
         var i = 0;
         function send() {
             var msgData = JSON.stringify([2, "123", "hello", "hello world" + (i++)])

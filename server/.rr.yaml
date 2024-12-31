@@ -7,7 +7,7 @@ server:
   command: "php worker.php"
 
 http:
-  address: "0.0.0.0:5000"
+  address: "0.0.0.0:8000"
   pool:
     num_workers: 20
     supervisor:

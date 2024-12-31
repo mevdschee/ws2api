@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -194,4 +195,80 @@ func TestOutgoingMessage(t *testing.T) {
 	if got != want {
 		t.Errorf("got %q, wanted %q", got, want)
 	}
+}
+
+// TestDisconnectReason tries to disconnect a websocket and checks
+// that the reason is received by the server.
+func TestDisconnectReason(t *testing.T) {
+	// start api server
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" {
+			w.Write([]byte("ok"))
+			return
+		}
+		bodyBytes, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("error reading body: %q", err.Error())
+		}
+		got := r.Method + " " + r.RequestURI + " " + string(bodyBytes)
+		want := "DELETE /test disconnect"
+		if got != want {
+			t.Errorf("got %q, wanted %q", got, want)
+		}
+		w.Write([]byte("ok"))
+	}))
+	defer apiServer.Close()
+	// start ws server
+	wsServer := httptest.NewServer(getWsHandler(apiServer.URL + "/"))
+	defer wsServer.Close()
+	wsUrl := strings.Replace(wsServer.URL, "http://", "ws://", 1)
+	// connect to ws server
+	wsClient, _, err := websocket.DefaultDialer.Dial(wsUrl+"/test", nil)
+	if err != nil {
+		t.Errorf("error connecting ws client: %s", err.Error())
+	}
+	// close ws connection
+	err = wsClient.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(1000, "disconnect"))
+	if err != nil {
+		t.Errorf("error closing ws from client: %s", err.Error())
+	}
+	wsClient.ReadMessage()
+	wsClient.Close()
+}
+
+// TestDisconnectUnexpected tries to disconnect a websocket unexpected and
+// checks that the cause is received by the server.
+func TestDisconnectUnexpected(t *testing.T) {
+	// start api server
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" {
+			w.Write([]byte("ok"))
+			return
+		}
+		bodyBytes, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("error reading body: %q", err.Error())
+		}
+		got := r.Method + " " + r.RequestURI + " " + string(bodyBytes)
+		want := "DELETE /test EOF"
+		if got != want {
+			t.Errorf("got %q, wanted %q", got, want)
+		}
+		w.Write([]byte("ok"))
+	}))
+	defer apiServer.Close()
+	// start ws server
+	wsServer := httptest.NewServer(getWsHandler(apiServer.URL + "/"))
+	defer wsServer.Close()
+	wsUrl := strings.Replace(wsServer.URL, "http://", "ws://", 1)
+	// connect to ws server
+	wsClient, _, err := websocket.DefaultDialer.Dial(wsUrl+"/test", nil)
+	if err != nil {
+		t.Errorf("error connecting ws client: %s", err.Error())
+	}
+	// close ws connection
+	wsClient.Close()
+	wsClient.SetReadDeadline(time.UnixMilli(1))
+	time.Sleep(1 * time.Millisecond)
+	wsClient.ReadMessage()
 }

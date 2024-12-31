@@ -80,7 +80,7 @@ func main() {
 	increaseNumberOfOpenFiles()
 	//go printStatistics()
 	log.Println("Proxy running on: http://localhost:7001/")
-	log.Panic(http.ListenAndServe(":7001", getWsHandler("http://localhost:8000/api/evc/ws/")))
+	log.Panic(http.ListenAndServe(":7001", getWsHandler("http://localhost:8000/wsoverhttp/")))
 }
 
 func getWsHandler(serverUrl string) http.Handler {

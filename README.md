@@ -10,6 +10,10 @@ Proxy messages from Websockets to a RoadRunner PHP API server (see [blog post](h
 
     WS client <--[message]-- WS server <--[http response]-- API server
 
+    WS client --[ws close]--> WS server --[http delete request]--> API server
+
+    WS client <--[ws disconnect]-- WS server <--[http response "ok"]-- API server
+
 And also:
 
     API server --[http post request]--> WS server --[message]--> WS client

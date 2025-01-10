@@ -12,7 +12,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// TestConnectAccepted tries to connect with a websocket and checks
+// TestConnectAccepted connects with a websocket and checks
 // that a websocket connection is made when "ok" is returned.
 func TestConnectAccepted(t *testing.T) {
 	// start api server
@@ -49,7 +49,7 @@ func TestConnectAccepted(t *testing.T) {
 	}
 }
 
-// TestConnectRejected tries to connect with a websocket and checks
+// TestConnectRejected connects with a websocket and checks
 // that a websocket connection is failing when "ko" is returned.
 func TestConnectRejected(t *testing.T) {
 	// start api server
@@ -77,7 +77,7 @@ func TestConnectRejected(t *testing.T) {
 	}
 }
 
-// TestConnectFailed tries to connect with a websocket and checks
+// TestConnectFailed connects with a websocket and checks
 // that a 502 is returned when the server is not available.
 func TestConnectFailed(t *testing.T) {
 	// start api server
@@ -106,7 +106,7 @@ func TestConnectFailed(t *testing.T) {
 	}
 }
 
-// TestIncomingMessage tries to connect with a websocket and sends
+// TestIncomingMessage connects with a websocket and sends
 // and receives a message in text format over that websocket connection
 func TestIncomingMessage(t *testing.T) {
 	// start api server
@@ -158,7 +158,7 @@ func TestIncomingMessage(t *testing.T) {
 	}
 }
 
-// TestOutgoingMessage tries to connect with a websocket and sends
+// TestOutgoingMessage connects with a websocket and sends
 // and receives a message in text format over that websocket connection
 func TestOutgoingMessage(t *testing.T) {
 	// start api server
@@ -197,7 +197,7 @@ func TestOutgoingMessage(t *testing.T) {
 	}
 }
 
-// TestDisconnectReason tries to disconnect a websocket and checks
+// TestDisconnectReason disconnects a websocket and checks
 // that the reason is received by the server.
 func TestDisconnectReason(t *testing.T) {
 	// start api server
@@ -236,7 +236,7 @@ func TestDisconnectReason(t *testing.T) {
 	wsClient.Close()
 }
 
-// TestDisconnectUnexpected tries to disconnect a websocket unexpected and
+// TestDisconnectUnexpected disconnects a websocket unexpected and
 // checks that the cause is received by the server.
 func TestDisconnectUnexpected(t *testing.T) {
 	// start api server

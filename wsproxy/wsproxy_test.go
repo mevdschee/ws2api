@@ -101,7 +101,7 @@ func TestConnectAccepted(t *testing.T) {
 	}
 	wsClient.ReadMessage()
 	// read number of request sent
-	counter1 := getCounterValueFromStatisticsUrl(t, wsServer.URL, "request_count")
+	counter1 := getCounterValueFromStatisticsUrl(t, wsServer.URL, "requests_started")
 	// compare results
 	got := fmt.Sprintf("%d %d %s", counter1, response.StatusCode, request)
 	want := "2 101 GET /test"
@@ -132,7 +132,7 @@ func TestConnectRejected(t *testing.T) {
 		errorMessage = err.Error()
 	}
 	// read number of request sent
-	counter1 := getCounterValueFromStatisticsUrl(t, wsServer.URL, "request_count")
+	counter1 := getCounterValueFromStatisticsUrl(t, wsServer.URL, "requests_started")
 	// compare results
 	got := fmt.Sprintf("%d %d %s %s", counter1, response.StatusCode, errorMessage, request)
 	want := "1 403 websocket: bad handshake GET /test"
@@ -163,7 +163,7 @@ func TestConnectFailed(t *testing.T) {
 		errorMessage = err.Error()
 	}
 	// read number of request sent
-	counter1 := getCounterValueFromStatisticsUrl(t, wsServer.URL, "request_count")
+	counter1 := getCounterValueFromStatisticsUrl(t, wsServer.URL, "requests_started")
 	// compare results
 	got := fmt.Sprintf("%d %d %s %s", counter1, response.StatusCode, errorMessage, request)
 	want := "1 502 websocket: bad handshake GET /test"
@@ -208,7 +208,7 @@ func TestIncomingMessage(t *testing.T) {
 	}
 	wsClient.ReadMessage()
 	// read number of request sent
-	counter1 := getCounterValueFromStatisticsUrl(t, wsServer.URL, "request_count")
+	counter1 := getCounterValueFromStatisticsUrl(t, wsServer.URL, "requests_started")
 	// compare results
 	got := fmt.Sprintf("%d %d %s %s", counter1, messageType, string(messageBytes), request)
 	want := "3 1 response_message POST /test request_message" // 1 = text message
@@ -252,7 +252,7 @@ func TestOutgoingMessage(t *testing.T) {
 	}
 	wsClient.ReadMessage()
 	// read number of request sent
-	counter1 := getCounterValueFromStatisticsUrl(t, wsServer.URL, "request_count")
+	counter1 := getCounterValueFromStatisticsUrl(t, wsServer.URL, "requests_started")
 	// compare results
 	got := fmt.Sprintf("%d %d %s", counter1, messageType, string(messageBytes))
 	want := "2 1 server_message" // 1 = text message
@@ -288,7 +288,7 @@ func TestDisconnectReason(t *testing.T) {
 	}
 	wsClient.ReadMessage()
 	// read number of request sent
-	counter1 := getCounterValueFromStatisticsUrl(t, wsServer.URL, "request_count")
+	counter1 := getCounterValueFromStatisticsUrl(t, wsServer.URL, "requests_started")
 	// compare results
 	got := fmt.Sprintf("%d %s", counter1, request)
 	want := "2 DELETE /test disconnect"
@@ -322,7 +322,7 @@ func TestDisconnectUnexpected(t *testing.T) {
 	wsClient.ReadMessage()
 	request := <-requests
 	// read number of request sent
-	counter1 := getCounterValueFromStatisticsUrl(t, wsServer.URL, "request_count")
+	counter1 := getCounterValueFromStatisticsUrl(t, wsServer.URL, "requests_started")
 	// compare results
 	got := fmt.Sprintf("%d %s", counter1, request)
 	want := "2 DELETE /test EOF"

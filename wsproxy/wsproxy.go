@@ -11,7 +11,8 @@ import (
 	"runtime/pprof"
 	"strconv"
 	"strings"
-	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/lxzan/gws"
 )
@@ -21,34 +22,9 @@ func init() {
 }
 
 // var (
-// 	qps   uint64 = 0
+// 	rps   uint64 = 0
 // 	conns uint64 = 0
 // )
-
-func fetchData(c *http.Client, method, url, body string) (string, error) {
-	var r *http.Response
-	var err error
-	req, err := http.NewRequest(method, url, strings.NewReader(body))
-	if err != nil {
-		return "", err
-	}
-	r, err = c.Do(req)
-	//log.Printf("curl %s %s", url, body)
-	if err != nil {
-		return "", err
-	}
-	defer r.Body.Close()
-	responseBytes, err := io.ReadAll(r.Body)
-	responseString := string(responseBytes)
-	//log.Printf("return %d %s", r.StatusCode, responseBytes)
-	if err != nil {
-		return responseString, err
-	}
-	if r.StatusCode != 200 {
-		return responseString, fmt.Errorf("proxy returned: %s", r.Status)
-	}
-	return responseString, nil
-}
 
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
 var memprofile = flag.String("memprofile", "", "write mem profile to file")
@@ -86,7 +62,8 @@ func getWsHandler(serverUrl string) http.Handler {
 		addresses:   gws.NewConcurrentMap[*gws.Conn, string](16),
 		upgrader:    nil,
 		serverUrl:   serverUrl,
-		statistics:  Statistics{counters: map[string]uint64{}},
+		statistics:  Statistics{},
+		client:      nil,
 	}
 	serverOptions := gws.ServerOption{
 		CheckUtf8Enabled:  true,
@@ -96,36 +73,28 @@ func getWsHandler(serverUrl string) http.Handler {
 		ParallelGolimit:   16,
 	}
 	handler.upgrader = gws.NewUpgrader(&handler, &serverOptions)
+	handler.client = handler.httpClient()
 	return &handler
 }
 
 // func printStatistics() {
-//  total := uint64(0)
-//  ticker := time.NewTicker(time.Second)
-//  log.Printf("seconds,connections,qps,total\n")
-//  for i := 1; true; i++ {
-//      <-ticker.C
-//      n := atomic.SwapUint64(&qps, 0)
-//      total += n
-//      log.Printf("%v,%v,%v,%v\n", i, atomic.LoadUint64(&conns), n, total)
-//  }
+// 	total := uint64(0)
+// 	ticker := time.NewTicker(time.Second)
+// 	log.Printf("seconds,connections,rps,total\n")
+// 	for i := 1; true; i++ {
+// 		<-ticker.C
+// 		n := atomic.SwapUint64(&rps, 0)
+// 		total += n
+// 		log.Printf("%v,%v,%v,%v\n", i, atomic.LoadUint64(&conns), n, total)
+// 	}
 // }
 
 type Statistics struct {
-	mutex    sync.RWMutex
-	counters map[string]uint64
-}
-
-func (s *Statistics) increment(name string) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	s.counters[name]++
-}
-
-func (s *Statistics) decrement(name string) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	s.counters[name]--
+	requestsStarted   uint64
+	requestsFailed    uint64
+	requestsSucceeded uint64
+	connectionsOpened uint64
+	connectionsClosed uint64
 }
 
 type Handler struct {
@@ -135,6 +104,48 @@ type Handler struct {
 	upgrader    *gws.Upgrader
 	serverUrl   string
 	statistics  Statistics
+	client      *http.Client
+}
+
+func (c *Handler) httpClient() *http.Client {
+	client := &http.Client{
+		Transport: &http.Transport{
+			MaxConnsPerHost:     10000, // c10k I guess
+			MaxIdleConnsPerHost: 1000,  // just guessing
+		},
+		Timeout: 60 * time.Second,
+	}
+	return client
+}
+
+func (c *Handler) fetchData(client *http.Client, method, url, body string) (string, error) {
+	var r *http.Response
+	var err error
+	req, err := http.NewRequest(method, url, strings.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	atomic.AddUint64(&c.statistics.requestsStarted, 1)
+	r, err = client.Do(req)
+	//log.Printf("curl %s %s", url, body)
+	if err != nil {
+		atomic.AddUint64(&c.statistics.requestsFailed, 1)
+		return "", fmt.Errorf("fetchData: %s", err.Error())
+	}
+	defer r.Body.Close()
+	responseBytes, err := io.ReadAll(r.Body)
+	responseString := string(responseBytes)
+	//log.Printf("return %d %s", r.StatusCode, responseBytes)
+	if err != nil {
+		atomic.AddUint64(&c.statistics.requestsFailed, 1)
+		return responseString, fmt.Errorf("fetchData: %s", err.Error())
+	}
+	if r.StatusCode != 200 {
+		atomic.AddUint64(&c.statistics.requestsFailed, 1)
+		return responseString, fmt.Errorf("fetchData: %s", r.Status)
+	}
+	atomic.AddUint64(&c.statistics.requestsSucceeded, 1)
+	return responseString, nil
 }
 
 func (c *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
@@ -144,30 +155,32 @@ func (c *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		connection, ok := c.connections.Load(address)
 		if !ok {
 			writer.WriteHeader(404)
-			writer.Write([]byte("could not find address"))
+			writer.Write([]byte("not found"))
+			log.Printf("MethodPost: could not find connection: %s", address)
 			return
 		}
 		defer request.Body.Close()
 		bodyBytes, err := io.ReadAll(request.Body)
 		if err != nil {
 			writer.WriteHeader(500)
-			writer.Write([]byte("could not read body"))
+			writer.Write([]byte("internal server error"))
+			log.Println("MethodPost: could not read body")
 			return
 		}
 		err = connection.WriteString(string(bodyBytes))
 		if err != nil {
-			log.Println("could not write message")
+			log.Println("MethodPost: could not write message")
 		}
 		writer.Write([]byte("ok"))
 		return
 	}
 	// parse address
 	if len(address) == 0 {
-		c.statistics.mutex.RLock()
-		defer c.statistics.mutex.RUnlock()
-		for k, v := range c.statistics.counters {
-			writer.Write([]byte(k + " " + strconv.FormatUint(v, 10) + "\n"))
-		}
+		writer.Write([]byte("connections_opened " + strconv.FormatUint(atomic.LoadUint64(&c.statistics.connectionsOpened), 10) + "\n"))
+		writer.Write([]byte("connections_closed " + strconv.FormatUint(atomic.LoadUint64(&c.statistics.connectionsClosed), 10) + "\n"))
+		writer.Write([]byte("requests_started " + strconv.FormatUint(atomic.LoadUint64(&c.statistics.requestsStarted), 10) + "\n"))
+		writer.Write([]byte("requests_failed " + strconv.FormatUint(atomic.LoadUint64(&c.statistics.requestsFailed), 10) + "\n"))
+		writer.Write([]byte("requests_succeeded " + strconv.FormatUint(atomic.LoadUint64(&c.statistics.requestsSucceeded), 10) + "\n"))
 		if *memprofile != "" {
 			f, err := os.Create(*memprofile)
 			if err != nil {
@@ -178,48 +191,45 @@ func (c *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		}
 		return
 	}
-	client := &http.Client{}
-	c.statistics.increment("request_count")
-	c.statistics.increment("curl_count")
-	responseBytes, err := fetchData(client, "GET", c.serverUrl+address, "")
-	c.statistics.decrement("curl_count")
+	responseBytes, err := c.fetchData(c.client, "GET", c.serverUrl+address, "")
 	if err != nil {
 		writer.WriteHeader(502)
-		writer.Write([]byte("error when proxying connect"))
-		log.Println("error when proxying connect")
+		writer.Write([]byte("bad gateway"))
+		log.Printf("MethodGet: %s", err.Error())
 		return
 	}
 	if responseBytes != "ok" {
 		writer.WriteHeader(403)
-		writer.Write([]byte("not allowed to connect"))
-		log.Println("not allowed to connect")
+		writer.Write([]byte("forbidden"))
+		log.Println("MethodGet: not allowed to connect")
 		return
 	}
 	if request.Header.Get("Upgrade") != "websocket" {
 		writer.WriteHeader(400)
 		writer.Write([]byte("no upgrade requested"))
-		log.Println("no upgrade requested")
+		log.Println("MethodGet: no upgrade requested")
 		return
 	}
 	connection, err := c.upgrader.Upgrade(writer, request)
 	if err != nil {
-		log.Println("could not upgrade connection")
+		log.Println("MethodGet: could not upgrade connection")
 		return
 	}
 	//atomic.AddUint64(&conns, 1)
-	c.statistics.increment("addresses")
+	atomic.AddUint64(&c.statistics.connectionsOpened, 1)
 	c.connections.Store(address, connection)
 	c.addresses.Store(connection, address)
 	connection.ReadLoop()
 	c.connections.Delete(address)
 	c.addresses.Delete(connection)
+	atomic.AddUint64(&c.statistics.connectionsClosed, 1)
 }
 
 func (c *Handler) OnMessage(connection *gws.Conn, message *gws.Message) {
 	defer message.Close()
-	//atomic.AddUint64(&qps, 1)
+	//atomic.AddUint64(&rps, 1)
 	if message.Opcode == gws.OpcodeBinary {
-		log.Println("binary messages not supported")
+		log.Println("OnMessage: binary messages not supported")
 		return
 	}
 	if message.Opcode == gws.OpcodePing {
@@ -233,15 +243,11 @@ func (c *Handler) OnMessage(connection *gws.Conn, message *gws.Message) {
 		msg := message.Data.String()
 		address, ok := c.addresses.Load(connection)
 		if !ok {
-			log.Println("could not find address")
+			log.Println("OnMessage: could not find address")
 			return
 		}
-		client := &http.Client{}
 		err := error(nil)
-		c.statistics.increment("request_count")
-		c.statistics.increment("curl_count")
-		responseBytes, err := fetchData(client, "POST", c.serverUrl+address, msg)
-		c.statistics.decrement("curl_count")
+		responseBytes, err := c.fetchData(c.client, "POST", c.serverUrl+address, msg)
 		if err != nil {
 			log.Println(err.Error())
 		}
@@ -256,19 +262,17 @@ func (c *Handler) OnMessage(connection *gws.Conn, message *gws.Message) {
 func (c *Handler) OnClose(connection *gws.Conn, err error) {
 	address, ok := c.addresses.Load(connection)
 	if !ok {
-		log.Println("could not find address")
+		log.Printf("OnClose: could not find address")
 		return
 	}
-	client := &http.Client{}
 	reason := err.Error()
+	log.Printf("OnClose: address=%s error=%s", address, reason)
+	// this should be rate limited
 	closeErr, ok := err.(*gws.CloseError)
 	if ok {
 		reason = string(closeErr.Reason)
 	}
-	c.statistics.increment("request_count")
-	c.statistics.increment("curl_count")
-	responseBytes, err := fetchData(client, "DELETE", c.serverUrl+address, reason)
-	c.statistics.decrement("curl_count")
+	responseBytes, err := c.fetchData(c.client, "DELETE", c.serverUrl+address, reason)
 	if err != nil {
 		log.Println(err.Error())
 	}

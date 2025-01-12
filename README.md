@@ -100,6 +100,11 @@ use:
 
 in order to ensure that the `<ClientId>` will always end up on the same server.
 
+### Statistics
+
+You can let Prometheus (or another OpenMetrics compatible) scraper scrape the
+metrics of the proxy. Amongst other variables it keeps track of
+
 ### Other implementations
 
 - Go with GWS (this repo)

@@ -103,7 +103,19 @@ in order to ensure that the `<ClientId>` will always end up on the same server.
 ### Statistics
 
 You can let Prometheus (or another OpenMetrics compatible) scraper scrape the
-metrics of the proxy. Amongst other variables it keeps track of
+metrics of the proxy. Amongst other variables it keeps track of are:
+
+- connections_opened
+- connections_closed
+- requests_started
+- requests_failed
+- requests_succeeded
+
+You can find the number of open connections by calculating: 
+
+    active_connections = requests_started - (requests_succeeded + requests_failed)
+
+You can do this within Grafana using PromQL or another query language.
 
 ### Other implementations
 

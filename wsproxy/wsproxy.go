@@ -12,8 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
-	"syscall"
 
 	"github.com/lxzan/gws"
 )
@@ -22,10 +20,10 @@ func init() {
 	runtime.GOMAXPROCS(8)
 }
 
-var (
-	qps   uint64 = 0
-	conns uint64 = 0
-)
+// var (
+// 	qps   uint64 = 0
+// 	conns uint64 = 0
+// )
 
 func fetchData(c *http.Client, method, url, body string) (string, error) {
 	var r *http.Response
@@ -54,18 +52,17 @@ func fetchData(c *http.Client, method, url, body string) (string, error) {
 
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
 var memprofile = flag.String("memprofile", "", "write mem profile to file")
-var statistics = Statistics{counters: map[string]uint64{}}
 
-func increaseNumberOfOpenFiles() {
-	var rLimit syscall.Rlimit
-	if err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit); err != nil {
-		log.Fatalf("failed to get rlimit: %v", err)
-	}
-	rLimit.Cur = rLimit.Max
-	if err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &rLimit); err != nil {
-		log.Fatalf("failed to set rlimit: %v", err)
-	}
-}
+// func increaseNumberOfOpenFiles() {
+// 	var rLimit syscall.Rlimit
+// 	if err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit); err != nil {
+// 		log.Fatalf("failed to get rlimit: %v", err)
+// 	}
+// 	rLimit.Cur = rLimit.Max
+// 	if err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &rLimit); err != nil {
+// 		log.Fatalf("failed to set rlimit: %v", err)
+// 	}
+// }
 
 func main() {
 	flag.Parse()
@@ -77,7 +74,7 @@ func main() {
 		pprof.StartCPUProfile(f)
 		defer pprof.StopCPUProfile()
 	}
-	increaseNumberOfOpenFiles()
+	//increaseNumberOfOpenFiles()
 	//go printStatistics()
 	log.Println("Proxy running on: http://localhost:7001/")
 	log.Panic(http.ListenAndServe(":7001", getWsHandler("http://localhost:8000/wsoverhttp/")))
@@ -89,6 +86,7 @@ func getWsHandler(serverUrl string) http.Handler {
 		addresses:   gws.NewConcurrentMap[*gws.Conn, string](16),
 		upgrader:    nil,
 		serverUrl:   serverUrl,
+		statistics:  Statistics{counters: map[string]uint64{}},
 	}
 	serverOptions := gws.ServerOption{
 		CheckUtf8Enabled:  true,
@@ -98,7 +96,7 @@ func getWsHandler(serverUrl string) http.Handler {
 		ParallelGolimit:   16,
 	}
 	handler.upgrader = gws.NewUpgrader(&handler, &serverOptions)
-	return handler
+	return &handler
 }
 
 // func printStatistics() {
@@ -136,9 +134,10 @@ type Handler struct {
 	addresses   *gws.ConcurrentMap[*gws.Conn, string]
 	upgrader    *gws.Upgrader
 	serverUrl   string
+	statistics  Statistics
 }
 
-func (c Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+func (c *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	address := strings.Split(request.URL.Path, "/")[1]
 	if request.Method == http.MethodPost {
 		// find connection
@@ -164,9 +163,9 @@ func (c Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	}
 	// parse address
 	if len(address) == 0 {
-		statistics.mutex.RLock()
-		defer statistics.mutex.RUnlock()
-		for k, v := range statistics.counters {
+		c.statistics.mutex.RLock()
+		defer c.statistics.mutex.RUnlock()
+		for k, v := range c.statistics.counters {
 			writer.Write([]byte(k + " " + strconv.FormatUint(v, 10) + "\n"))
 		}
 		if *memprofile != "" {
@@ -180,9 +179,10 @@ func (c Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	client := &http.Client{}
-	statistics.increment("curl_count")
+	c.statistics.increment("request_count")
+	c.statistics.increment("curl_count")
 	responseBytes, err := fetchData(client, "GET", c.serverUrl+address, "")
-	statistics.decrement("curl_count")
+	c.statistics.decrement("curl_count")
 	if err != nil {
 		writer.WriteHeader(502)
 		writer.Write([]byte("error when proxying connect"))
@@ -206,18 +206,18 @@ func (c Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		log.Println("could not upgrade connection")
 		return
 	}
-	atomic.AddUint64(&conns, 1)
-	statistics.increment("addresses")
+	//atomic.AddUint64(&conns, 1)
+	c.statistics.increment("addresses")
 	c.connections.Store(address, connection)
 	c.addresses.Store(connection, address)
 	connection.ReadLoop()
-	c.addresses.Delete(connection)
+	c.connections.Delete(address)
 	c.addresses.Delete(connection)
 }
 
-func (c Handler) OnMessage(connection *gws.Conn, message *gws.Message) {
+func (c *Handler) OnMessage(connection *gws.Conn, message *gws.Message) {
 	defer message.Close()
-	atomic.AddUint64(&qps, 1)
+	//atomic.AddUint64(&qps, 1)
 	if message.Opcode == gws.OpcodeBinary {
 		log.Println("binary messages not supported")
 		return
@@ -237,14 +237,15 @@ func (c Handler) OnMessage(connection *gws.Conn, message *gws.Message) {
 			return
 		}
 		client := &http.Client{}
-		statistics.increment("request_count")
-		statistics.increment("curl_count")
+		err := error(nil)
+		c.statistics.increment("request_count")
+		c.statistics.increment("curl_count")
 		responseBytes, err := fetchData(client, "POST", c.serverUrl+address, msg)
-		statistics.decrement("curl_count")
+		c.statistics.decrement("curl_count")
 		if err != nil {
 			log.Println(err.Error())
 		}
-		err = connection.WriteString(string(responseBytes))
+		err = connection.WriteString(responseBytes)
 		if err != nil {
 			log.Println(err.Error())
 		}
@@ -252,21 +253,22 @@ func (c Handler) OnMessage(connection *gws.Conn, message *gws.Message) {
 	}
 }
 
-func (c Handler) OnClose(connection *gws.Conn, err error) {
+func (c *Handler) OnClose(connection *gws.Conn, err error) {
 	address, ok := c.addresses.Load(connection)
 	if !ok {
 		log.Println("could not find address")
 		return
 	}
 	client := &http.Client{}
-	statistics.increment("curl_count")
 	reason := err.Error()
 	closeErr, ok := err.(*gws.CloseError)
 	if ok {
 		reason = string(closeErr.Reason)
 	}
+	c.statistics.increment("request_count")
+	c.statistics.increment("curl_count")
 	responseBytes, err := fetchData(client, "DELETE", c.serverUrl+address, reason)
-	statistics.decrement("curl_count")
+	c.statistics.decrement("curl_count")
 	if err != nil {
 		log.Println(err.Error())
 	}

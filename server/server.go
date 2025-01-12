@@ -13,6 +13,10 @@ func main() {
 		return c.SendString("ok")
 	})
 
+	app.Delete("/*", func(c *fiber.Ctx) error {
+		return c.SendString("ok")
+	})
+
 	app.Post("/*", func(c *fiber.Ctx) error {
 		body := string(c.Body())
 		return c.SendString("[3,\"123\",\"hello\",{\"received\":" + body + "}]")

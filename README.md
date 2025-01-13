@@ -85,9 +85,9 @@ flags to create pprof profiles.
 
 ### Performance results
 
-The proxy application was benchmarked to build up and hold 120k connections each
-doing one message per 10 seconds in 30 seconds (from 0 to 120k connections) and
-with 12k messages per second within 32GB RAM.
+The proxy application was benchmarked to build up and hold 250k connections each
+doing one message per 10 seconds in 60 seconds (from 0 to 250k connections) ending
+at 25k messages per second within 32GB RAM.
 
 ### Scaling
 
@@ -99,6 +99,27 @@ use:
     hash $request_uri consistent;
 
 in order to ensure that the `<ClientId>` will always end up on the same server.
+
+### Tuning
+
+If you dont't want the parallism to run completely wild you can limit the number
+of HTTP connections from the proxy to the web server using the following 
+configurable values in the HTTP client's Transport:
+
+    MaxConnsPerHost:     10000, // c10k I guess
+    MaxIdleConnsPerHost: 1000,  // just guessing
+    Timeout:             60 * time.Second,
+
+You may also have to set the nf_conntrack_max a little higher using:
+
+    sysctl -w net.netfilter.nf_conntrack_max=2621440
+
+Next to that I suggest that you increase the max number of open files using:
+
+    sysctl -w fs.file-max=1073741816
+
+Note that the performance was never tested in Docker containers. Also Docker
+networking may have significant overhead. I suggest bare metal when possible.
 
 ### Statistics
 

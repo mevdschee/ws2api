@@ -8,9 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/gorilla/websocket"
+	"github.com/lxzan/gws"
 )
 
 // startLockStepTestWebServer creates a scriptable webserver that has request and response channel to lock-step execution
@@ -18,6 +17,7 @@ func startLockStepTestWebServer(t *testing.T) (apiServer *httptest.Server, reque
 	requests = make(chan string, 1)
 	responses = make(chan string, 1)
 	apiServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
 		bodyBytes, err := io.ReadAll(r.Body)
 		if err != nil {
 			t.Errorf("error reading body: %q", err.Error())
@@ -54,6 +54,7 @@ func getCounterValueFromStatisticsUrl(t *testing.T, url string, counterName stri
 	if err != nil {
 		t.Errorf("error reading body: %q", err.Error())
 	}
+	//t.Log(string(bodyBytes))
 	lines := strings.Split(string(bodyBytes), "\n")
 	for _, line := range lines {
 		line = strings.Trim(line, " ")
@@ -86,20 +87,18 @@ func TestConnectAccepted(t *testing.T) {
 	wsUrl := strings.Replace(wsServer.URL, "http://", "ws://", 1)
 	// connect to ws server
 	responses <- "200 ok"
-	wsClient, response, err := websocket.DefaultDialer.Dial(wsUrl+"/test", nil)
+	wsClient, response, err := gws.NewClient(nil, &gws.ClientOption{Addr: wsUrl + "/test"})
 	request := <-requests
 	if err != nil {
 		t.Fatalf("error connecting ws client: %s", err.Error())
 	}
-	defer wsClient.Close()
 	// close ws connection
 	responses <- "200 ok"
-	err = wsClient.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(1000, "done"))
+	err = wsClient.WriteClose(1000, []byte("done"))
 	<-requests
 	if err != nil {
 		t.Errorf("error closing ws from client: %s", err.Error())
 	}
-	wsClient.ReadMessage()
 	// read number of request sent
 	counter1 := getCounterValueFromStatisticsUrl(t, wsServer.URL, "requests_started")
 	// compare results
@@ -122,11 +121,8 @@ func TestConnectRejected(t *testing.T) {
 	wsUrl := strings.Replace(wsServer.URL, "http://", "ws://", 1)
 	// connect to ws server
 	responses <- "200 ko"
-	wsClient, response, err := websocket.DefaultDialer.Dial(wsUrl+"/test", nil)
+	_, response, err := gws.NewClient(nil, &gws.ClientOption{Addr: wsUrl + "/test"})
 	request := <-requests
-	if err == nil {
-		defer wsClient.Close()
-	}
 	errorMessage := ""
 	if err != nil {
 		errorMessage = err.Error()
@@ -135,7 +131,7 @@ func TestConnectRejected(t *testing.T) {
 	counter1 := getCounterValueFromStatisticsUrl(t, wsServer.URL, "requests_started")
 	// compare results
 	got := fmt.Sprintf("%d %d %s %s", counter1, response.StatusCode, errorMessage, request)
-	want := "1 403 websocket: bad handshake GET /test"
+	want := "1 403 handshake error GET /test"
 	if got != want {
 		t.Errorf("got %q, wanted %q", got, want)
 	}
@@ -153,11 +149,8 @@ func TestConnectFailed(t *testing.T) {
 	wsUrl := strings.Replace(wsServer.URL, "http://", "ws://", 1)
 	// connect to ws server
 	responses <- "503 service unavailable"
-	wsClient, response, err := websocket.DefaultDialer.Dial(wsUrl+"/test", nil)
+	_, response, err := gws.NewClient(nil, &gws.ClientOption{Addr: wsUrl + "/test"})
 	request := <-requests
-	if err == nil {
-		defer wsClient.Close()
-	}
 	errorMessage := ""
 	if err != nil {
 		errorMessage = err.Error()
@@ -166,7 +159,7 @@ func TestConnectFailed(t *testing.T) {
 	counter1 := getCounterValueFromStatisticsUrl(t, wsServer.URL, "requests_started")
 	// compare results
 	got := fmt.Sprintf("%d %d %s %s", counter1, response.StatusCode, errorMessage, request)
-	want := "1 502 websocket: bad handshake GET /test"
+	want := "1 502 handshake error GET /test"
 	if got != want {
 		t.Errorf("got %q, wanted %q", got, want)
 	}
@@ -184,34 +177,33 @@ func TestIncomingMessage(t *testing.T) {
 	wsUrl := strings.Replace(wsServer.URL, "http://", "ws://", 1)
 	// connect to ws server
 	responses <- "200 ok"
-	wsClient, _, err := websocket.DefaultDialer.Dial(wsUrl+"/test", nil)
+	wsClient, _, err := gws.NewClient(nil, &gws.ClientOption{Addr: wsUrl + "/test"})
 	<-requests
 	if err != nil {
 		t.Fatalf("error connecting ws client: %s", err.Error())
 	}
-	defer wsClient.Close()
 	// send ws message
 	responses <- "200 response_message"
-	wsClient.WriteMessage(websocket.TextMessage, []byte("request_message"))
+	wsClient.WriteMessage(gws.OpcodeText, []byte("request_message"))
 	request := <-requests
 	// receive ws message
-	messageType, messageBytes, err := wsClient.ReadMessage()
+	messageBytes := make([]byte, 1024) // 1k buffer
+	messageLength, err := wsClient.NetConn().Read(messageBytes)
 	if err != nil {
 		t.Errorf("error reading from ws client: %s", err.Error())
 	}
 	// close ws connection
 	responses <- "200 ok"
-	err = wsClient.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(1000, "done"))
+	err = wsClient.WriteClose(1000, []byte("done"))
 	<-requests
 	if err != nil {
 		t.Errorf("error closing ws from client: %s", err.Error())
 	}
-	wsClient.ReadMessage()
 	// read number of request sent
 	counter1 := getCounterValueFromStatisticsUrl(t, wsServer.URL, "requests_started")
 	// compare results
-	got := fmt.Sprintf("%d %d %s %s", counter1, messageType, string(messageBytes), request)
-	want := "3 1 response_message POST /test request_message" // 1 = text message
+	got := fmt.Sprintf("%d %s %s", counter1, string(messageBytes[:messageLength]), request)
+	want := "3 \x81\x10response_message POST /test request_message" // \x81 = text message, \x10 = length
 	if got != want {
 		t.Errorf("got %q, wanted %q", got, want)
 	}
@@ -229,33 +221,32 @@ func TestOutgoingMessage(t *testing.T) {
 	wsUrl := strings.Replace(wsServer.URL, "http://", "ws://", 1)
 	// connect to ws server
 	responses <- "200 ok"
-	wsClient, _, err := websocket.DefaultDialer.Dial(wsUrl+"/test", nil)
+	wsClient, _, err := gws.NewClient(nil, &gws.ClientOption{Addr: wsUrl + "/test"})
 	<-requests
 	if err != nil {
 		t.Fatalf("error connecting ws client: %s", err.Error())
 	}
-	defer wsClient.Close()
 	// make post request
 	c := &http.Client{}
 	c.Post(wsServer.URL+"/test", "plain/text", strings.NewReader("server_message"))
 	// receive ws message
-	messageType, messageBytes, err := wsClient.ReadMessage()
+	messageBytes := make([]byte, 1024) // 1k buffer
+	messageLength, err := wsClient.NetConn().Read(messageBytes)
 	if err != nil {
 		t.Errorf("error reading from ws client: %s", err.Error())
 	}
 	// close ws connection
 	responses <- "200 ok"
-	err = wsClient.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(1000, ""))
+	err = wsClient.WriteClose(1000, []byte(""))
 	<-requests
 	if err != nil {
 		t.Errorf("error closing ws from client: %s", err.Error())
 	}
-	wsClient.ReadMessage()
 	// read number of request sent
 	counter1 := getCounterValueFromStatisticsUrl(t, wsServer.URL, "requests_started")
 	// compare results
-	got := fmt.Sprintf("%d %d %s", counter1, messageType, string(messageBytes))
-	want := "2 1 server_message" // 1 = text message
+	got := fmt.Sprintf("%d %s", counter1, string(messageBytes[:messageLength]))
+	want := "2 \x81\x0eserver_message" // \x81 = text message, \x0e = length
 	if got != want {
 		t.Errorf("got %q, wanted %q", got, want)
 	}
@@ -273,20 +264,18 @@ func TestDisconnectReason(t *testing.T) {
 	wsUrl := strings.Replace(wsServer.URL, "http://", "ws://", 1)
 	// connect to ws server
 	responses <- "200 ok"
-	wsClient, _, err := websocket.DefaultDialer.Dial(wsUrl+"/test", nil)
+	wsClient, _, err := gws.NewClient(nil, &gws.ClientOption{Addr: wsUrl + "/test"})
 	<-requests
 	if err != nil {
 		t.Fatalf("error connecting ws client: %s", err.Error())
 	}
-	defer wsClient.Close()
 	// close ws connection
 	responses <- "200 ok"
-	err = wsClient.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(1000, "disconnect"))
+	err = wsClient.WriteClose(1000, []byte("disconnect"))
 	request := <-requests
 	if err != nil {
 		t.Errorf("error closing ws from client: %s", err.Error())
 	}
-	wsClient.ReadMessage()
 	// read number of request sent
 	counter1 := getCounterValueFromStatisticsUrl(t, wsServer.URL, "requests_started")
 	// compare results
@@ -309,17 +298,14 @@ func TestDisconnectUnexpected(t *testing.T) {
 	wsUrl := strings.Replace(wsServer.URL, "http://", "ws://", 1)
 	// connect to ws server
 	responses <- "200 ok"
-	wsClient, _, err := websocket.DefaultDialer.Dial(wsUrl+"/test", nil)
+	wsClient, _, err := gws.NewClient(nil, &gws.ClientOption{Addr: wsUrl + "/test"})
 	<-requests
 	if err != nil {
 		t.Fatalf("error connecting ws client: %s", err.Error())
 	}
 	// close ws connection
 	responses <- "200 ok"
-	wsClient.Close()
-	wsClient.SetReadDeadline(time.UnixMilli(1))
-	time.Sleep(1 * time.Millisecond)
-	wsClient.ReadMessage()
+	wsClient.NetConn().Close()
 	request := <-requests
 	// read number of request sent
 	counter1 := getCounterValueFromStatisticsUrl(t, wsServer.URL, "requests_started")

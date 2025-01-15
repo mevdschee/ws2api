@@ -21,10 +21,10 @@ func init() {
 	runtime.GOMAXPROCS(8)
 }
 
-// var (
-// 	rps   uint64 = 0
-// 	conns uint64 = 0
-// )
+var (
+	rps   uint64 = 0
+	conns uint64 = 0
+)
 
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
 var memprofile = flag.String("memprofile", "", "write mem profile to file")
@@ -51,7 +51,7 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 	//increaseNumberOfOpenFiles()
-	//go printStatistics()
+	go printStatistics()
 	log.Println("Proxy running on: http://localhost:7001/")
 	log.Panic(http.ListenAndServe(":7001", getWsHandler("http://localhost:8000/wsoverhttp/")))
 }
@@ -77,17 +77,17 @@ func getWsHandler(serverUrl string) http.Handler {
 	return &handler
 }
 
-// func printStatistics() {
-// 	total := uint64(0)
-// 	ticker := time.NewTicker(time.Second)
-// 	log.Printf("seconds,connections,rps,total\n")
-// 	for i := 1; true; i++ {
-// 		<-ticker.C
-// 		n := atomic.SwapUint64(&rps, 0)
-// 		total += n
-// 		log.Printf("%v,%v,%v,%v\n", i, atomic.LoadUint64(&conns), n, total)
-// 	}
-// }
+func printStatistics() {
+	total := uint64(0)
+	ticker := time.NewTicker(time.Second)
+	log.Printf("seconds,connections,rps,total\n")
+	for i := 1; true; i++ {
+		<-ticker.C
+		n := atomic.SwapUint64(&rps, 0)
+		total += n
+		log.Printf("%v,%v,%v,%v\n", i, atomic.LoadUint64(&conns), n, total)
+	}
+}
 
 type Statistics struct {
 	requestsStarted   uint64
@@ -215,7 +215,7 @@ func (c *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		log.Println("MethodGet: could not upgrade connection")
 		return
 	}
-	//atomic.AddUint64(&conns, 1)
+	atomic.AddUint64(&conns, 1)
 	atomic.AddUint64(&c.statistics.connectionsOpened, 1)
 	c.connections.Store(address, connection)
 	c.addresses.Store(connection, address)
@@ -227,7 +227,7 @@ func (c *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 
 func (c *Handler) OnMessage(connection *gws.Conn, message *gws.Message) {
 	defer message.Close()
-	//atomic.AddUint64(&rps, 1)
+	atomic.AddUint64(&rps, 1)
 	if message.Opcode == gws.OpcodeBinary {
 		log.Println("OnMessage: binary messages not supported")
 		return

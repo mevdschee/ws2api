@@ -141,8 +141,8 @@ You can do this within Grafana using PromQL or another query language.
 ### Other implementations
 
 - Go with GWS (this repo)
-- JS with Deno ([source](https://github.com/mevdschee/ws2api-js))
-- PHP with Swow ([source](https://github.com/mevdschee/ws2api-php))
 - PHP with OpenSwoole ([source](https://github.com/mevdschee/ws2api-php))
+- PHP with Swow ([source](https://github.com/mevdschee/ws2api-php-alt))
+- JS with Deno ([source](https://github.com/mevdschee/ws2api-js))
 
 Note that the performance of the non-Go implementations may vary.

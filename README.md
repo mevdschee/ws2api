@@ -118,7 +118,7 @@ Next to that I suggest that you increase the max number of open files using:
 
     sudo sysctl -w fs.file-max=1073741816
 
-Not that you may also need to change `/etc/security/limits.conf` file.
+Note that you may also need to change `/etc/security/limits.conf` file.
 
 Note that the performance was never tested in Docker containers. Also Docker
 networking may have significant overhead. I suggest bare metal when possible.
